@@ -52,7 +52,7 @@ def _dia_columna(valor, anio: int) -> date | None:
     if isinstance(valor, date):
         return valor
     texto = _limpiar(valor)
-    if m := re.match(r"(\d{1,2})[./-](\d{1,2})\b", texto):
+    if m := re.match(r"(\d{1,2})[./-](\d{1,2})(?!\d)", texto):
         try:
             return date(anio, int(m[2]), int(m[1]))
         except ValueError:

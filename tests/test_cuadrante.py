@@ -64,3 +64,28 @@ def test_color_de_vacaciones_deja_fuera_aunque_tenga_horas(tmp_path, conf):
     ausencias = [i for i in p.incidencias if i.codigo == "AUSENCIA"]
     assert len(ausencias) == 1 and "Vacaciones" in ausencias[0].detalle
     assert p.reparto.equipos[0].miembros["PB/TOW"].contrato == "PB*/JAR"  # lo cubre la otra persona PB*/JAR
+
+
+def test_cabecera_de_dia_sin_salto_de_linea(tmp_path):
+    ruta = tmp_path / "turnos.xlsx"
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Depart.", "  Empleado"] + [f"{d}.10_x000D_{n}" for d, n in zip(range(1, 8), ["jue", "vie", "sáb", "dom", "lun", "mar", "mié"])])
+    ws.append(["TL", "UNO, A"] + ["05:00\n12:45\n"] * 7)
+    wb.save(ruta)
+    filas = leer_cuadrante(ruta, 2026)
+    assert min(filas[0].jornadas) == date(2026, 10, 1) and len(filas[0].jornadas) == 7
+
+
+def test_cada_tl_abre_su_equipo(tmp_path, conf):
+    ruta = tmp_path / "turnos.xlsx"
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Depart", "Empleado"] + [f"{d}.2\n{n}" for d, n in zip(range(1, 8), "sdlmxjv")])
+    for funcion, nombre in [("TL", "UNO, A"), ("TL", "DOS, B"), ("PB", "TRES, C"), ("PCP", "CUATRO, D")]:
+        ws.append([funcion, nombre] + ["05:00\n12:45"] * 7)
+    wb.save(ruta)
+    dia = date(2025, 2, 1)
+    p = generar_parrilla_cuadrante(dia, [Vuelo(dia, vuelo_out="FR1", destino="STN", std=420)],
+                                   leer_cuadrante(ruta, 2025), conf, segundos=5)
+    assert len(p.reparto.equipos) == 2

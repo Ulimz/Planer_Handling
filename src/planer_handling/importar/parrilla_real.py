@@ -23,6 +23,9 @@ def _minutos(valor) -> int | None:
     return int(m[1]) * 60 + int(m[2]) if m else None
 
 
+FIN_DE_NOCHE = 4 * 60  # antes de las 04:00 cuenta como la noche siguiente
+
+
 def _texto(valor) -> str:
     return "" if valor is None else str(valor).strip()
 
@@ -35,8 +38,10 @@ def leer_vuelos_parrilla(ruta: str | Path, hoja: str, dia: date) -> tuple[list[V
     if fila_cab is None:
         raise ValueError(f"La hoja {hoja} no tiene la cabecera N.Vuelo de una parrilla diaria.")
     cab = [clave(v) for v in filas[fila_cab]]
-    c_orig, c_dest = cab.index("ORIG."), cab.index("DEST.")
-    c_pk, c_sta, c_std = cab.index("PK"), cab.index("STA"), cab.index("STD")
+    # Algunas hojas llegan con cabeceras borradas; el orden de columnas es siempre el mismo.
+    c_dest, c_sta, c_std = cab.index("DEST."), cab.index("STA"), cab.index("STD")
+    c_orig = cab.index("ORIG.") if "ORIG." in cab else c_dest - 3
+    c_pk = cab.index("PK") if "PK" in cab else c_sta - 2
     c_grupo = cab.index("GRUPO") if "GRUPO" in cab else None
 
     vuelos, grupos = [], {}
@@ -51,10 +56,22 @@ def leer_vuelos_parrilla(ruta: str | Path, hoja: str, dia: date) -> tuple[list[V
             v.vuelo_out, v.destino, v.std = compania_out + _texto(f[c_dest + 2]), _texto(f[c_dest]), _minutos(f[c_std])
         if v.sta is None and v.std is None:
             continue
-        if v.sta is not None and v.std is not None and v.std < v.sta:
+        # La parrilla de un día acaba con llegadas pasada la medianoche (00:05, 01:00...):
+        # son de esta misma noche, no de la madrugada anterior.
+        if v.sta is not None and v.sta < FIN_DE_NOCHE:
+            v.sta += 1440
+        if v.std is not None and v.std < FIN_DE_NOCHE:
             v.std += 1440
         v.puesto = _texto(f[c_pk])
-        vuelos.append(v)
-        if c_grupo is not None:
-            grupos[v.codigo] = _texto(f[c_grupo])
+        partes = [v]
+        if v.sta is not None and v.std is not None and v.std < v.sta:
+            # Salida antes que la llegada en la misma fila: no es un giro, son dos servicios.
+            salida = Vuelo(dia, vuelo_out=v.vuelo_out, destino=v.destino, std=v.std,
+                           puesto=v.puesto, fila_origen=v.fila_origen, tipo_avion="")
+            v.vuelo_out, v.destino, v.std = "", "", None
+            partes.append(salida)
+        for parte in partes:
+            vuelos.append(parte)
+            if c_grupo is not None:
+                grupos[parte.codigo] = _texto(f[c_grupo])
     return vuelos, grupos

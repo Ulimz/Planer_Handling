@@ -75,7 +75,8 @@ def formar_equipos_por_horario(tramos: list[Tramo], puestos: list[str], solape_m
         inicio, fin = jefe.inicio, jefe.fin
         miembros: dict[str, Empleado | None] = {puestos[0]: jefe.empleado}
         for puesto in puestos[1:]:
-            candidatos = [t for t in libres if t.empleado.habilitado(puesto, dia) and t.empleado.id != jefe.empleado.id
+            candidatos = [t for t in libres if t.empleado.categoria != "TL"   # cada TL abre su propio equipo
+                          and t.empleado.habilitado(puesto, dia) and t.empleado.id != jefe.empleado.id
                           and min(fin, t.fin) - max(inicio, t.inicio) >= solape_minimo
                           and all(m is None or m.id != t.empleado.id for m in miembros.values())]
             if not candidatos:
