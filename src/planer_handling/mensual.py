@@ -348,7 +348,8 @@ def ausentes_del_dia(ausencias: list[Ausencia], perfiles: list[Perfil], dia: dat
 
 def planificar_mes(vuelos_por_dia: dict[date, list[Vuelo]], perfiles: list[Perfil], referencia: date,
                    conf: Configuracion, segundos_por_dia: float = 10,
-                   ausencias: list[Ausencia] | None = None) -> CuadranteMes:
+                   ausencias: list[Ausencia] | None = None, progreso=None) -> CuadranteMes:
+    """`progreso(dia, hechos, total)`, si se pasa, se llama al terminar cada día (para la web)."""
     fin_anterior: dict[str, int] = {}
     dias_usados: Counter = Counter()
     dias = []
@@ -361,6 +362,8 @@ def planificar_mes(vuelos_por_dia: dict[date, list[Vuelo]], perfiles: list[Perfi
         dias_usados.update(j.perfil.empleado.id for j in jornadas)
         dias.append(DiaPlanificado(dia, len(vuelos_por_dia[dia]), demanda_dia, cobertura(jornadas), jornadas,
                                    ausentes))
+        if progreso:
+            progreso(dia, len(dias), len(vuelos_por_dia))
     return CuadranteMes(dias, perfiles, referencia)
 
 

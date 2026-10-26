@@ -12,6 +12,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+web = ["streamlit>=1.35"]
 
 [project.scripts]
 planer = "planer_handling.cli:main"

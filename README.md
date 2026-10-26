@@ -66,3 +66,14 @@ planer-mes --mes 2026-11 --vuelos Flights-noviembre.xlsx \
 - El Excel de salida tiene el formato del cuadrante de la empresa, así que se puede pasar después a `planer --cuadrante`. Incluye las hojas Cobertura, Horas y Curva.
 
 Pendiente: demanda de jardineras e hipódromo. Por ahora esas personas mantienen su horario habitual.
+
+## Web sencilla (en tu ordenador)
+
+En Windows, doble clic en `arrancar_web.bat`.
+- La primera vez instala lo necesario. Hace falta tener Python instalado.
+- Después se abre el navegador con dos pestañas:
+  - **Cuadrante del mes**: subes los vuelos del mes, el cuadrante de referencia y, si quieres, las ausencias, y descargas el cuadrante.
+  - **Parrilla del día**: subes el cuadrante y los vuelos del día, y descargas la parrilla.
+- Todo se calcula en el propio ordenador y los archivos no se envían a ningún sitio.
+
+En Linux o Mac: `pip install -e .[web]` y después `streamlit run web/app.py`.
