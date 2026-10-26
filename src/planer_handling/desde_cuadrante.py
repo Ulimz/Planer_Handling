@@ -4,13 +4,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from typing import TYPE_CHECKING
 
 from . import asignacion, demanda, validacion
 from .configuracion import Configuracion
 from .equipos import Reparto
 from .importar.cuadrante import FilaCuadrante
+from .importar.vuelos import clave
 from .modelos import Empleado, Equipo, Habilitacion, Incidencia, Vuelo, hhmm
 from .planificador import Parrilla
+
+if TYPE_CHECKING:
+    from .mensual import Ausencia
 
 
 @dataclass
@@ -100,10 +105,25 @@ def formar_equipos_por_horario(tramos: list[Tramo], puestos: list[str], solape_m
 
 
 def generar_parrilla_cuadrante(dia: date, vuelos: list[Vuelo], filas: list[FilaCuadrante], conf: Configuracion,
-                               incidencias_previas: list[Incidencia] | None = None, segundos: float = 30) -> Parrilla:
+                               incidencias_previas: list[Incidencia] | None = None, segundos: float = 30,
+                               ausencias: list[Ausencia] | None = None) -> Parrilla:
+    """`ausencias`: registro de bajas, vacaciones… además de los colores del cuadrante."""
     empleados, incidencias = empleados_desde_cuadrante(filas, conf)
-    tramos, ausencias = tramos_del_dia(filas, empleados, dia, conf.datos.get("marcas"))
-    incidencias += ausencias
+    tramos, por_color = tramos_del_dia(filas, empleados, dia, conf.datos.get("marcas"))
+    incidencias += por_color
+    ausentes = {}
+    for a in ausencias or []:
+        if a.desde <= dia <= a.hasta:
+            ausentes[clave(a.empleado)] = a.motivo
+    if ausentes:
+        avisados = set()
+        for t in tramos:
+            motivo = ausentes.get(clave(t.empleado.nombre)) or ausentes.get(clave(t.empleado.id))
+            if motivo and t.empleado.id not in avisados:
+                avisados.add(t.empleado.id)
+                incidencias.append(Incidencia("AVISO", "AUSENCIA", f"{t.empleado.id} ({t.empleado.contrato}): {motivo}.",
+                                              t.empleado.id))
+        tramos = [t for t in tramos if t.empleado.id not in avisados]
     plataforma = [t for t in tramos if t.empleado.categoria in conf.equipo_plataforma]
     equipos, sobrantes = formar_equipos_por_horario(plataforma, conf.equipo_plataforma,
                                                     conf.datos.get("solape_minimo_equipo", 120), dia)

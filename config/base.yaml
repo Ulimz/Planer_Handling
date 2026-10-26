@@ -81,5 +81,9 @@ marcas:
   FFC65911: {motivo: Fichaje tardío,              disponible: true}    # marrón
   FF833C0B: {motivo: Fichaje tardío,              disponible: true}    # marrón
 
+# Motivos de ausencia que se pueden registrar además de los de la tabla de colores (motivo: color).
+motivos_extra:
+  Permiso de paternidad o maternidad: FF00B0F0   # azul, como el permiso retribuido
+
 # Con cuadrante: solape mínimo (minutos) para que dos personas formen equipo.
 solape_minimo_equipo: 120

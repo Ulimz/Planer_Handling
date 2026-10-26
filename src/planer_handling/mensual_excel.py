@@ -8,7 +8,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-from .mensual import INICIO_MAS_TEMPRANO, PASO, CuadranteMes, texto_jornada
+from .mensual import INICIO_MAS_TEMPRANO, PASO, Cambio, CuadranteMes, texto_jornada
 from .modelos import hhmm
 
 DIAS_SEMANA = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"]
@@ -18,16 +18,21 @@ FALTA = PatternFill("solid", fgColor="FFF8CBAD")
 AUSENTE = PatternFill("solid", fgColor="FFD9D9D9")
 
 
-def exportar_mes(cm: CuadranteMes, ruta, con_nombres: bool = False) -> None:
+def exportar_mes(cm: CuadranteMes, ruta, con_nombres: bool = False, colores: dict[str, str] | None = None,
+                 cambios: list[Cambio] | None = None) -> None:
+    """`colores`: motivo de ausencia -> color de celda (los de la empresa), para pintar cada ausencia.
+    `cambios`: si es una reorganización, la lista de cambios va en su propia hoja."""
     wb = Workbook()
-    _hoja_cuadrante(wb.active, cm, con_nombres)
+    _hoja_cuadrante(wb.active, cm, con_nombres, colores or {})
+    if cambios is not None:
+        _hoja_cambios(wb.create_sheet("Cambios", 0), cambios)
     _hoja_cobertura(wb.create_sheet("Cobertura"), cm)
     _hoja_horas(wb.create_sheet("Horas"), cm)
     _hoja_curva(wb.create_sheet("Curva"), cm)
     wb.save(ruta)
 
 
-def _hoja_cuadrante(ws, cm: CuadranteMes, con_nombres: bool) -> None:
+def _hoja_cuadrante(ws, cm: CuadranteMes, con_nombres: bool, colores: dict[str, str]) -> None:
     ws.title = "Cuadrante"
     dias = [d.dia for d in cm.dias]
     ws.append(["Depart.", "Empleado", "Patrón"] + [f"{d.day}.{d.month}\n{DIAS_SEMANA[d.weekday()]}" for d in dias])
@@ -45,7 +50,10 @@ def _hoja_cuadrante(ws, cm: CuadranteMes, con_nombres: bool) -> None:
         ws.append(fila)
         for dp, celda in zip(cm.dias, ws[ws.max_row][3:]):
             if e.id in dp.ausentes:
-                celda.fill = AUSENTE
+                color = colores.get(dp.ausentes[e.id])
+                celda.fill = PatternFill("solid", fgColor=color) if color else AUSENTE
+                if color == "FF000000":
+                    celda.font = Font(color="FFFFFFFF")
     for celda in ws[1]:
         celda.font, celda.fill = NEGRITA, CABECERA
         celda.alignment = Alignment(wrap_text=True, horizontal="center")
@@ -99,3 +107,13 @@ def _hoja_curva(ws, cm: CuadranteMes) -> None:
                     ws.append([dp.dia, hhmm(INICIO_MAS_TEMPRANO + k * PASO), rol, d, c])
     for celda in ws[1]:
         celda.font, celda.fill = NEGRITA, CABECERA
+
+
+def _hoja_cambios(ws, cambios: list[Cambio]) -> None:
+    ws.append(["Día", "Empleado", "Función", "Antes", "Ahora", "Tipo"])
+    for c in sorted(cambios, key=lambda c: (c.dia, c.tipo, c.empleado)):
+        ws.append([c.dia, c.empleado, c.funcion, c.antes, c.despues, c.tipo])
+    for celda in ws[1]:
+        celda.font, celda.fill = NEGRITA, CABECERA
+    for col, ancho in zip("ABCDEF", (12, 32, 10, 24, 24, 22)):
+        ws.column_dimensions[col].width = ancho

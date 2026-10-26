@@ -35,6 +35,10 @@ from .modelos import Empleado, Vuelo, hhmm
 PASO = 15
 DESCANSO_MINIMO = 12 * 60
 PAUSAS_PARTIDO = (60, 120, 180, 240, 300)   # convenio: la interrupción va de 1 a 5 horas
+# Al reorganizar un horario publicado (en las mismas unidades que 1 franja de 15 min sin cubrir = 1000).
+COSTE_CAMBIO = 5000          # mover a alguien compensa si tapa más de una hora de hueco de un operario
+COSTE_IRREGULAR = 6000
+COSTE_LLAMAR_LIBRE = 10000
 MEDIODIA = 12 * 60
 INICIO_MAS_TEMPRANO = 4 * 60
 INICIO_MAS_TARDIO = 21 * 60
@@ -251,7 +255,11 @@ def _opciones_inicio(fase: str, fin_anterior: int | None) -> list[int]:
 
 def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[Perfil], referencia: date,
                    fin_anterior: dict[str, int], dias_usados: dict[str, int], segundos: float = 10,
-                   ausentes: dict[str, str] | None = None) -> list[Jornada]:
+                   ausentes: dict[str, str] | None = None,
+                   actual: dict[str, list[tuple[int, int]]] | None = None) -> list[Jornada]:
+    """Horarios del día. Con `actual` (el horario ya publicado de ese día) reorganiza: mantiene a
+    cada uno en su horario salvo que haga falta moverlo para cubrir a los ausentes, y solo llama
+    a alguien que libra si no hay otra forma."""
     modelo = cp_model.CpModel()
     n = franjas_del_dia()
     cubre: dict[str, list[list]] = {rol: [[] for _ in range(n)] for rol in PLANIFICADOS}
@@ -259,23 +267,37 @@ def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[
     coste = []
     fijas: list[Jornada] = []
     reserva: list[tuple[str, int]] = []
+    coste_opcion: dict[tuple[str, int], int] = {}
 
     for p in perfiles:
         e = p.empleado
-        trabaja = p.trabaja(dia, referencia)
-        if trabaja is False or e.id in (ausentes or {}):
+        if e.id in (ausentes or {}):
             continue
         pos = p.posicion(dia, referencia)
         fase = p.fases.get(pos, "") if pos is not None else ""
+        if actual is not None:
+            publicado = actual.get(e.id)
+            trabaja = True if publicado else None
+            if publicado:
+                fase = "M" if publicado[0][0] < MEDIODIA else "T"
+        else:
+            publicado = None
+            trabaja = p.trabaja(dia, referencia)
+            if trabaja is False:
+                continue
         if e.categoria not in PLANIFICADOS:
-            # Jardineras, hipódromo y mandos: mantienen su horario habitual en los días de su rotación.
-            if trabaja:
+            # Jardineras, hipódromo y mandos: mantienen su horario (el publicado o el habitual).
+            if publicado:
+                fijas.append(Jornada(p, dia, publicado))
+            elif trabaja:
                 inicio = p.inicio_habitual.get(fase) or p.inicio_habitual[""]
                 fijas.append(Jornada(p, dia, [(inicio, inicio + p.duracion)]))
             continue
-        if trabaja is None and dias_usados.get(e.id, 0) >= p.dias_referencia:
+        if trabaja is None and actual is None and dias_usados.get(e.id, 0) >= p.dias_referencia:
             continue
         opciones = _opciones(p, fase, fin_anterior.get(e.id))
+        if publicado and publicado not in opciones:
+            opciones.append(publicado)
         if not opciones:
             continue
         variables = []
@@ -287,9 +309,17 @@ def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[
             for inicio, fin in tramos:
                 for k in range(max(0, _franja(inicio)), min(n, _franja(fin - 1) + 1)):
                     cubre[e.categoria][k].append(x)
-            coste.append(abs(tramos[0][0] - habitual) // PASO * x)    # parecido a su horario de siempre
-        # Punto de partida para el optimizador (y plan de reserva): su horario habitual en un bloque.
-        if trabaja:
+            if actual is None:
+                coste_opcion[(e.id, n_opcion)] = abs(tramos[0][0] - habitual) // PASO   # parecido a su horario
+            elif tramos != publicado:
+                # Cambiar un horario ya publicado cuesta: solo si cubre lo que falta.
+                coste_opcion[(e.id, n_opcion)] = COSTE_CAMBIO + abs(tramos[0][0] - (publicado or tramos)[0][0]) // PASO
+            coste.append(coste_opcion.get((e.id, n_opcion), 0) * x)
+        # Punto de partida para el optimizador (y plan de reserva): su horario publicado o el habitual.
+        if publicado:
+            habitual_n = opciones.index(publicado)
+            reserva.append((e.id, habitual_n))
+        elif trabaja:
             habitual_n = min(range(len(opciones)), key=lambda k: (len(opciones[k]), abs(opciones[k][0][0] - habitual)))
             reserva.append((e.id, habitual_n))
         for n_opcion, x in enumerate(variables):
@@ -298,8 +328,14 @@ def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[
             modelo.AddExactlyOne(variables)
         else:
             modelo.AddAtMostOne(variables)
-            coste.append(50 * sum(variables))                         # llamar a un irregular solo si hace falta
+            # Llamar a un irregular solo si hace falta; a alguien que libra, menos todavía.
+            llamar = 50 if actual is None else (COSTE_IRREGULAR if p.patron == "irregular" else COSTE_LLAMAR_LIBRE)
+            coste.append(llamar * sum(variables))
 
+    por_id = {p.empleado.id: p for p in perfiles}
+    plan_reserva = [Jornada(por_id[eid], dia, eleccion[(eid, n_op)][1]) for eid, n_op in reserva]
+    cubre_reserva = cobertura(plan_reserva)
+    coste_reserva = sum(coste_opcion.get(r, 0) for r in reserva)
     deficit = []
     for k in range(n):
         tl, pb, op = (sum(cubre[r][k]) for r in ("TL", "PB/TOW", "Operario"))
@@ -313,16 +349,28 @@ def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[
         modelo.Add(extra_tl <= tl)
         modelo.Add(extra_pb <= pb)
         deficit += [3000 * faltas["TL"], 3000 * faltas["PB/TOW"], 1000 * faltas["Operario"]]
+        # Al reorganizar, pista completa (también de estas variables) para que el optimizador parta
+        # del horario publicado y no lo empeore si se le acaba el tiempo.
+        r_tl, r_pb, r_op = (cubre_reserva[r][k] for r in ("TL", "PB/TOW", "Operario"))
+        sobra_tl, sobra_pb = max(0, r_tl - demanda_dia["TL"][k]), max(0, r_pb - demanda_dia["PB/TOW"][k])
+        falta = {"TL": max(0, demanda_dia["TL"][k] - r_tl), "PB/TOW": max(0, demanda_dia["PB/TOW"][k] - r_pb),
+                 "Operario": max(0, demanda_dia["Operario"][k] - r_op - sobra_tl - sobra_pb)}
+        if actual is not None:
+            modelo.AddHint(extra_tl, sobra_tl)
+            modelo.AddHint(extra_pb, sobra_pb)
+            for r in PLANIFICADOS:
+                modelo.AddHint(faltas[r], falta[r])
+        coste_reserva += 3000 * (falta["TL"] + falta["PB/TOW"]) + 1000 * falta["Operario"]
     modelo.Minimize(sum(deficit) + sum(coste))
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = segundos
     solver.parameters.num_workers = 8
     estado = solver.Solve(modelo)
-    por_id = {p.empleado.id: p for p in perfiles}
-    if estado not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        # Sin tiempo para encontrar nada mejor: cada uno con su horario habitual.
-        return fijas + [Jornada(por_id[eid], dia, eleccion[(eid, n_op)][1]) for eid, n_op in reserva]
+    peor = actual is not None and estado == cp_model.FEASIBLE and solver.ObjectiveValue() > coste_reserva
+    if estado not in (cp_model.OPTIMAL, cp_model.FEASIBLE) or peor:
+        # Sin tiempo para encontrar nada mejor: cada uno con su horario habitual (o el publicado).
+        return fijas + plan_reserva
     return fijas + [Jornada(por_id[eid], dia, tramos)
                     for (eid, _), (x, tramos) in eleccion.items() if solver.Value(x)]
 
@@ -385,3 +433,74 @@ def dias_del_mes(anio: int, mes: int) -> list[date]:
 def texto_jornada(tramos: list[tuple[int, int]]) -> str:
     """Como en el cuadrante de la empresa: "05:00\\n09:20", y los partidos separados por una línea en blanco."""
     return "\n\n".join(f"{hhmm(i)}\n{hhmm(f)}" for i, f in tramos)
+
+
+# --- 4. Reorganizar un cuadrante ya publicado por ausencias ---------------------------------
+
+@dataclass
+class Cambio:
+    dia: date
+    empleado: str
+    funcion: str
+    antes: str
+    despues: str
+    tipo: str                           # "Ausencia", "Cambio de horario", "Llamado en día libre"
+
+
+def _texto(tramos) -> str:
+    return " + ".join(f"{hhmm(i)}-{hhmm(f)}" for i, f in tramos) if tramos else "Libre"
+
+
+def reorganizar(filas: list[FilaCuadrante], dias_mes: list[date], vuelos_por_dia: dict[date, list[Vuelo]],
+                ausencias: list[Ausencia], conf: Configuracion, segundos_por_dia: float = 10,
+                progreso=None) -> tuple[CuadranteMes, list[Cambio]]:
+    """Rehace los días de `vuelos_por_dia` de un cuadrante ya publicado para cubrir a quien falta,
+    moviendo a las menos personas posibles. El resto de días se queda como estaba."""
+    marcas = conf.datos.get("marcas", {})
+    perfiles = aprender_perfiles(filas, dias_mes, conf)
+    fila_de = {f.nombre: f for f in filas}
+    cambios: list[Cambio] = []
+    dias: list[DiaPlanificado] = []
+    fin_anterior: dict[str, int] = {}
+    vacia = {rol: [0] * franjas_del_dia() for rol in PLANIFICADOS}
+    for n, dia in enumerate(dias_mes, 1):
+        registradas = ausentes_del_dia(ausencias, perfiles, dia)     # las del registro (nuevas)
+        actual, ausentes = {}, dict(registradas)                      # más las que ya traía el cuadrante
+        for p in perfiles:
+            jornada = fila_de[p.empleado.nombre].jornadas.get(dia)
+            if not (jornada and jornada.tramos):
+                continue
+            marca = marcas.get(jornada.marca)
+            if marca and not marca["disponible"]:
+                ausentes.setdefault(p.empleado.id, marca["motivo"])
+            else:
+                actual[p.empleado.id] = jornada.tramos
+        if dia in vuelos_por_dia:
+            # Objetivo: recuperar la cobertura que tenía el horario publicado (sin pasar de lo que piden
+            # los vuelos). Así solo se mueve gente para tapar los huecos de los ausentes.
+            demanda_vuelos = demanda_del_dia(vuelos_por_dia[dia], conf)
+            publicada = cobertura([Jornada(p, dia, fila_de[p.empleado.nombre].jornadas[dia].tramos)
+                                   for p in perfiles if p.empleado.id in actual or p.empleado.id in registradas
+                                   if fila_de[p.empleado.nombre].jornadas.get(dia)
+                                   and fila_de[p.empleado.nombre].jornadas[dia].tramos])
+            demanda_dia = {r: [min(d, c) for d, c in zip(demanda_vuelos[r], publicada[r])] for r in PLANIFICADOS}
+            jornadas = planificar_dia(dia, demanda_dia, perfiles, dias_mes[0], fin_anterior, {}, segundos_por_dia,
+                                      ausentes, actual)
+            nuevo = {j.perfil.empleado.id: j.tramos for j in jornadas}
+            for p in perfiles:
+                eid = p.empleado.id
+                antes, despues = actual.get(eid), nuevo.get(eid)
+                if eid in registradas and antes:
+                    cambios.append(Cambio(dia, p.empleado.nombre, p.funcion, _texto(antes), ausentes[eid], "Ausencia"))
+                elif eid not in ausentes and antes != despues:
+                    tipo = "Cambio de horario" if antes else "Llamado en día libre"
+                    cambios.append(Cambio(dia, p.empleado.nombre, p.funcion, _texto(antes), _texto(despues), tipo))
+            dp = DiaPlanificado(dia, len(vuelos_por_dia[dia]), demanda_dia, cobertura(jornadas), jornadas, ausentes)
+        else:
+            jornadas = [Jornada(p, dia, actual[p.empleado.id]) for p in perfiles if p.empleado.id in actual]
+            dp = DiaPlanificado(dia, 0, vacia, cobertura(jornadas), jornadas, ausentes)
+        fin_anterior = {j.perfil.empleado.id: j.fin for j in dp.jornadas}
+        dias.append(dp)
+        if progreso:
+            progreso(dia, n, len(dias_mes))
+    return CuadranteMes(dias, perfiles, dias_mes[0]), cambios

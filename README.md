@@ -62,7 +62,7 @@ planer-mes --mes 2026-11 --vuelos Flights-noviembre.xlsx \
 - Cada día calcula cuántos equipos hacen falta cada 15 minutos y elige la hora de entrada de cada persona para cubrirlo, con 12 horas de descanso entre jornadas.
 - A las personas irregulares solo las llama si hacen falta, sin pasar de los días que hicieron en el mes de referencia.
 - Quien hacía turnos partidos puede recibir un partido: sus dos tramos habituales con una pausa de 1 a 5 horas.
-- Con `--ausencias listado.xlsx` (columnas EMPLEADO, DESDE, HASTA, MOTIVO) deja fuera a quien está de vacaciones, baja o permiso. Esos días salen en gris con el motivo.
+- Con `--ausencias listado.xlsx` (columnas EMPLEADO, DESDE, HASTA, MOTIVO) deja fuera a quien está de vacaciones, baja o permiso. Esos días salen con el motivo y el color de la empresa.
 - El Excel de salida tiene el formato del cuadrante de la empresa, así que se puede pasar después a `planer --cuadrante`. Incluye las hojas Cobertura, Horas y Curva.
 
 Pendiente: demanda de jardineras e hipódromo. Por ahora esas personas mantienen su horario habitual.
@@ -71,9 +71,10 @@ Pendiente: demanda de jardineras e hipódromo. Por ahora esas personas mantienen
 
 En Windows, doble clic en `arrancar_web.bat`.
 - La primera vez instala lo necesario. Hace falta tener Python instalado.
-- Después se abre el navegador con dos pestañas:
-  - **Cuadrante del mes**: subes los vuelos del mes, el cuadrante de referencia y, si quieres, las ausencias, y descargas el cuadrante.
-  - **Parrilla del día**: subes el cuadrante y los vuelos del día, y descargas la parrilla.
+- Después se abre el navegador con tres pestañas:
+  - **Plantilla y ausencias**: apuntas bajas, vacaciones, sanciones y permisos, y das el alta cuando la persona vuelve. Se guardan en `datos/registro/` (fuera de Git). Desde aquí también se reorganiza un cuadrante ya publicado: el programa cambia el horario a las menos personas posibles para cubrir a quien falta y entrega la lista de cambios (hoja Cambios del Excel).
+  - **Cuadrante del mes**: subes los vuelos del mes, el cuadrante de referencia y, si quieres, las ausencias, y descargas el cuadrante. Las ausencias apuntadas se tienen en cuenta solas.
+  - **Parrilla del día**: subes el cuadrante y los vuelos del día, y descargas la parrilla. Quien esté de baja o de vacaciones no entra en ningún equipo.
 - Todo se calcula en el propio ordenador y los archivos no se envían a ningún sitio.
 
 En Linux o Mac: `pip install -e .[web]` y después `streamlit run web/app.py`.
