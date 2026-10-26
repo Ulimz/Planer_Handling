@@ -46,3 +46,27 @@ def test_planifica_horarios_que_cubren_los_vuelos(conf):
     assert len(dp.jornadas) == 5
     assert all(j.inicio < 12 * 60 for j in dp.jornadas)   # le toca mañana a todos
     assert all(dp.deficit(r) == 0 for r in ("TL", "PB/TOW", "Operario"))
+
+
+def test_partidos_y_ausencias(conf, tmp_path):
+    import pandas as pd
+    from planer_handling.importar.ausencias import leer_ausencias
+    partida = _fila("PCP", "PARTIDO", 0)
+    for jornada in partida.jornadas.values():
+        jornada.tramos = [(300, 420), (600, 720)]           # 05:00-07:00 y 10:00-12:00
+    filas = [_fila("TL", "TL1", 0), _fila("PB", "PB1", 0), partida, _fila("PCP", "VACACIONES", 0)]
+    perfiles = mensual.aprender_perfiles(filas, OCTUBRE, conf)
+    assert perfiles[2].partido == (120, 180, 120)
+    ruta = tmp_path / "ausencias.xlsx"
+    pd.DataFrame({"Empleado": ["VACACIONES"], "Desde": ["01/11/2026"], "Hasta": ["15/11/2026"],
+                  "Motivo": ["Vacaciones"]}).to_excel(ruta, index=False)
+    dia = date(2026, 11, 6)
+    # Dos giros separados: a las 06:00 y a las 11:00. Un partido los cubre mejor que un bloque.
+    vuelos = {dia: [Vuelo(dia, vuelo_in="FR1", origen="STN", sta=6 * 60, vuelo_out="FR2", destino="STN", std=6 * 60 + 30),
+                    Vuelo(dia, vuelo_in="FR3", origen="DUB", sta=11 * 60, vuelo_out="FR4", destino="DUB", std=11 * 60 + 30)]}
+    cm = mensual.planificar_mes(vuelos, perfiles, OCTUBRE[0], conf, 5, leer_ausencias(ruta))
+    dp = cm.dias[0]
+    assert dp.ausentes == {perfiles[3].empleado.id: "Vacaciones"}
+    assert {j.perfil.empleado.nombre for j in dp.jornadas} == {"TL1", "PB1", "PARTIDO"}
+    assert len(next(j for j in dp.jornadas if j.perfil.empleado.nombre == "PARTIDO").tramos) == 2
+    assert mensual.texto_jornada([(300, 420), (600, 720)]) == "05:00\n07:00\n\n10:00\n12:00"

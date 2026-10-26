@@ -61,9 +61,8 @@ planer-mes --mes 2026-11 --vuelos Flights-noviembre.xlsx \
 - La rotación continúa en el mes nuevo sin reiniciarse.
 - Cada día calcula cuántos equipos hacen falta cada 15 minutos y elige la hora de entrada de cada persona para cubrirlo, con 12 horas de descanso entre jornadas.
 - A las personas irregulares solo las llama si hacen falta, sin pasar de los días que hicieron en el mes de referencia.
+- Quien hacía turnos partidos puede recibir un partido: sus dos tramos habituales con una pausa de 1 a 5 horas.
+- Con `--ausencias listado.xlsx` (columnas EMPLEADO, DESDE, HASTA, MOTIVO) deja fuera a quien está de vacaciones, baja o permiso. Esos días salen en gris con el motivo.
 - El Excel de salida tiene el formato del cuadrante de la empresa, así que se puede pasar después a `planer --cuadrante`. Incluye las hojas Cobertura, Horas y Curva.
 
-Pendiente:
-- ausencias del mes nuevo;
-- turnos partidos;
-- demanda de jardineras e hipódromo, que por ahora mantienen su horario habitual.
+Pendiente: demanda de jardineras e hipódromo. Por ahora esas personas mantienen su horario habitual.

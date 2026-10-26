@@ -10,6 +10,7 @@ import argparse
 from pathlib import Path
 
 from .configuracion import Configuracion
+from .importar.ausencias import leer_ausencias
 from .importar.cuadrante import leer_cuadrante
 from .importar.vuelos import leer_vuelos
 from .mensual import aprender_perfiles, dias_del_mes, planificar_mes
@@ -27,6 +28,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--vuelos", required=True, help="Programación de vuelos del mes (Flights, PACOTRON u OMS)")
     p.add_argument("--referencia", required=True, help="Cuadrante de un mes anterior con la plantilla")
     p.add_argument("--mes-referencia", required=True, type=_mes, help="Mes del cuadrante de referencia (AAAA-MM)")
+    p.add_argument("--ausencias", help="Listado de ausencias del mes (EMPLEADO, DESDE, HASTA, MOTIVO)")
     p.add_argument("--config", default="config/base.yaml")
     p.add_argument("--salida", help="Excel de salida (por defecto salida/cuadrante_AAAA-MM.xlsx)")
     p.add_argument("--horas-locales", action="store_true", help="Las horas del archivo ya son locales, no Zulu")
@@ -39,7 +41,8 @@ def main(argv: list[str] | None = None) -> None:
     perfiles = aprender_perfiles(leer_cuadrante(args.referencia, args.mes_referencia[0]), dias_ref, conf)
     vuelos = {d: leer_vuelos(args.vuelos, d, conf.zona_horaria, horas_utc=not args.horas_locales)[0]
               for d in dias_del_mes(*args.mes)}
-    cm = planificar_mes(vuelos, perfiles, dias_ref[0], conf, args.segundos_dia)
+    ausencias = leer_ausencias(args.ausencias) if args.ausencias else []
+    cm = planificar_mes(vuelos, perfiles, dias_ref[0], conf, args.segundos_dia, ausencias)
     salida = args.salida or Path("salida") / f"cuadrante_{args.mes[0]}-{args.mes[1]:02d}.xlsx"
     Path(salida).parent.mkdir(parents=True, exist_ok=True)
     exportar_mes(cm, salida, args.con_nombres)

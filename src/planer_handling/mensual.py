@@ -8,11 +8,13 @@ es de mañana o de tarde y cuántas horas suele hacer al día. Con eso el motor:
 2. Deja fijos los días de trabajo de quien sigue una rotación (6x3, 4x4) y decide su hora de
    entrada para cubrir la demanda. A quien no sigue una rotación lo llama solo cuando hace falta,
    sin pasar de los días que hizo en el mes de referencia.
-3. Respeta 12 horas de descanso entre jornadas.
+3. Quien hacía turnos partidos puede recibir un partido (sus dos tramos habituales con una
+   pausa de 1 a 5 horas) o un bloque seguido, lo que cubra mejor.
+4. Respeta 12 horas de descanso entre jornadas y deja fuera a quien está de vacaciones, baja o
+   permiso según el listado de ausencias.
 
-Lo que no sabe todavía: ausencias del mes nuevo (vacaciones, bajas), turnos partidos (cada
-jornada se planifica como un bloque de sus horas habituales) y demanda de jardineras e hipódromo
-(esas personas mantienen su horario habitual).
+Lo que no sabe todavía: la demanda de jardineras e hipódromo (esas personas mantienen su
+horario habitual).
 """
 from __future__ import annotations
 
@@ -27,10 +29,12 @@ from . import demanda
 from .configuracion import Configuracion
 from .desde_cuadrante import empleados_desde_cuadrante
 from .importar.cuadrante import FilaCuadrante
+from .importar.vuelos import clave
 from .modelos import Empleado, Vuelo, hhmm
 
 PASO = 15
 DESCANSO_MINIMO = 12 * 60
+PAUSAS_PARTIDO = (60, 120, 180, 240, 300)   # convenio: la interrupción va de 1 a 5 horas
 MEDIODIA = 12 * 60
 INICIO_MAS_TEMPRANO = 4 * 60
 INICIO_MAS_TARDIO = 21 * 60
@@ -51,6 +55,7 @@ class Perfil:
     fases: dict[int, str] = field(default_factory=dict)        # posición del ciclo -> "M" / "T"
     inicio_habitual: dict[str, int] = field(default_factory=dict)  # "M"/"T"/"" -> minuto de entrada
     duracion: int = 8 * 60              # minutos de una jornada típica
+    partido: tuple[int, int, int] | None = None   # (primer tramo, pausa, segundo tramo) si hace partidos
     dias_referencia: int = 0
     minutos_referencia: int = 0
 
@@ -73,8 +78,27 @@ class Perfil:
 class Jornada:
     perfil: Perfil
     dia: date
-    inicio: int
-    fin: int
+    tramos: list[tuple[int, int]]       # uno, o dos si es turno partido
+
+    @property
+    def inicio(self) -> int:
+        return self.tramos[0][0]
+
+    @property
+    def fin(self) -> int:
+        return self.tramos[-1][1]
+
+    @property
+    def minutos(self) -> int:
+        return sum(f - i for i, f in self.tramos)
+
+
+@dataclass
+class Ausencia:
+    empleado: str                       # código (C001) o nombre tal como aparece en el cuadrante
+    desde: date
+    hasta: date
+    motivo: str = "Ausencia"
 
 
 @dataclass
@@ -84,6 +108,7 @@ class DiaPlanificado:
     demanda: dict[str, list[int]]       # rol -> personas necesarias en cada franja de 15 min
     cobertura: dict[str, list[int]]
     jornadas: list[Jornada]
+    ausentes: dict[str, str] = field(default_factory=dict)   # id de empleado -> motivo
 
     def deficit(self, rol: str) -> int:
         """Minutos-persona sin cubrir en el día para ese rol."""
@@ -127,6 +152,7 @@ def aprender_perfiles(filas: list[FilaCuadrante], dias: list[date], conf: Config
             patron, desfase = "irregular", 0
         p = Perfil(empleado, fila.funcion, patron, desfase, dias_referencia=sum(trabajo))
         duraciones, inicios_por_pos, inicios_por_fase = [], {}, {"M": [], "T": [], "": []}
+        partidos = []
         for i, dia in enumerate(dias):
             jornada = fila.jornadas.get(dia)
             if not (jornada and jornada.tramos):
@@ -135,10 +161,15 @@ def aprender_perfiles(filas: list[FilaCuadrante], dias: list[date], conf: Config
             duraciones.append(minutos)
             p.minutos_referencia += minutos
             inicio = jornada.tramos[0][0]
+            if len(jornada.tramos) == 2:
+                (a1, f1), (a2, f2) = jornada.tramos
+                partidos.append((f1 - a1, a2 - f1, f2 - a2))
             inicios_por_fase[""].append(inicio)
             if p.ciclo():
                 inicios_por_pos.setdefault((i + desfase) % sum(p.ciclo()), []).append(inicio)
         p.duracion = int(statistics.median(duraciones))
+        if partidos:
+            p.partido = tuple(int(statistics.median(x[k] for x in partidos)) for k in range(3))
         for pos, inicios in inicios_por_pos.items():
             fase = Counter("M" if x < MEDIODIA else "T" for x in inicios).most_common(1)[0][0]
             p.fases[pos] = fase
@@ -193,7 +224,20 @@ def demanda_del_dia(vuelos: list[Vuelo], conf: Configuracion) -> dict[str, list[
 
 # --- 3. Horarios del día --------------------------------------------------------------------
 
-def _opciones_inicio(perfil: Perfil, fase: str, fin_anterior: int | None) -> list[int]:
+def _opciones(perfil: Perfil, fase: str, fin_anterior: int | None) -> list[list[tuple[int, int]]]:
+    """Jornadas posibles: un bloque de sus horas habituales y, si hace partidos, también dos
+    tramos con sus duraciones habituales y una pausa de 1 a 5 horas."""
+    inicios = _opciones_inicio(fase, fin_anterior)
+    opciones = [[(i, i + perfil.duracion)] for i in inicios]
+    if perfil.partido:
+        primero, _, segundo = perfil.partido
+        for i in inicios[::2]:
+            for pausa in PAUSAS_PARTIDO:
+                opciones.append([(i, i + primero), (i + primero + pausa, i + primero + pausa + segundo)])
+    return opciones
+
+
+def _opciones_inicio(fase: str, fin_anterior: int | None) -> list[int]:
     if fase == "M":
         desde, hasta = INICIO_MAS_TEMPRANO, MEDIODIA - PASO
     elif fase == "T":
@@ -206,18 +250,19 @@ def _opciones_inicio(perfil: Perfil, fase: str, fin_anterior: int | None) -> lis
 
 
 def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[Perfil], referencia: date,
-                   fin_anterior: dict[str, int], dias_usados: dict[str, int], segundos: float = 10) -> list[Jornada]:
+                   fin_anterior: dict[str, int], dias_usados: dict[str, int], segundos: float = 10,
+                   ausentes: dict[str, str] | None = None) -> list[Jornada]:
     modelo = cp_model.CpModel()
     n = franjas_del_dia()
     cubre: dict[str, list[list]] = {rol: [[] for _ in range(n)] for rol in PLANIFICADOS}
-    eleccion: dict[tuple[str, int], cp_model.IntVar] = {}
+    eleccion: dict[tuple[str, int], tuple[cp_model.IntVar, list[tuple[int, int]]]] = {}
     coste = []
     fijas: list[Jornada] = []
 
     for p in perfiles:
         e = p.empleado
         trabaja = p.trabaja(dia, referencia)
-        if trabaja is False:
+        if trabaja is False or e.id in (ausentes or {}):
             continue
         pos = p.posicion(dia, referencia)
         fase = p.fases.get(pos, "") if pos is not None else ""
@@ -225,22 +270,23 @@ def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[
             # Jardineras, hipódromo y mandos: mantienen su horario habitual en los días de su rotación.
             if trabaja:
                 inicio = p.inicio_habitual.get(fase) or p.inicio_habitual[""]
-                fijas.append(Jornada(p, dia, inicio, inicio + p.duracion))
+                fijas.append(Jornada(p, dia, [(inicio, inicio + p.duracion)]))
             continue
         if trabaja is None and dias_usados.get(e.id, 0) >= p.dias_referencia:
             continue
-        opciones = _opciones_inicio(p, fase, fin_anterior.get(e.id))
+        opciones = _opciones(p, fase, fin_anterior.get(e.id))
         if not opciones:
             continue
         variables = []
         habitual = p.inicio_habitual.get(fase) or p.inicio_habitual[""]
-        for inicio in opciones:
-            x = modelo.NewBoolVar(f"{e.id}_{inicio}")
-            eleccion[(e.id, inicio)] = x
+        for n_opcion, tramos in enumerate(opciones):
+            x = modelo.NewBoolVar(f"{e.id}_{n_opcion}")
+            eleccion[(e.id, n_opcion)] = (x, tramos)
             variables.append(x)
-            for k in range(max(0, _franja(inicio)), min(n, _franja(inicio + p.duracion - 1) + 1)):
-                cubre[e.categoria][k].append(x)
-            coste.append(abs(inicio - habitual) // PASO * x)          # parecido a su horario de siempre
+            for inicio, fin in tramos:
+                for k in range(max(0, _franja(inicio)), min(n, _franja(fin - 1) + 1)):
+                    cubre[e.categoria][k].append(x)
+            coste.append(abs(tramos[0][0] - habitual) // PASO * x)    # parecido a su horario de siempre
         if trabaja:
             modelo.AddExactlyOne(variables)
         else:
@@ -269,8 +315,8 @@ def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[
     if estado not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         raise RuntimeError(f"Sin solución para el {dia} ({solver.StatusName(estado)}).")
     por_id = {p.empleado.id: p for p in perfiles}
-    jornadas = fijas + [Jornada(por_id[eid], dia, inicio, inicio + por_id[eid].duracion)
-                        for (eid, inicio), x in eleccion.items() if solver.Value(x)]
+    jornadas = fijas + [Jornada(por_id[eid], dia, tramos)
+                        for (eid, _), (x, tramos) in eleccion.items() if solver.Value(x)]
     return jornadas
 
 
@@ -280,22 +326,41 @@ def cobertura(jornadas: list[Jornada]) -> dict[str, list[int]]:
     for j in jornadas:
         rol = j.perfil.empleado.categoria
         if rol in resultado:
-            for k in range(max(0, _franja(j.inicio)), min(n, _franja(j.fin - 1) + 1)):
-                resultado[rol][k] += 1
+            for inicio, fin in j.tramos:
+                for k in range(max(0, _franja(inicio)), min(n, _franja(fin - 1) + 1)):
+                    resultado[rol][k] += 1
+    return resultado
+
+
+def ausentes_del_dia(ausencias: list[Ausencia], perfiles: list[Perfil], dia: date) -> dict[str, str]:
+    """{id de empleado: motivo} de quien no está ese día. Se busca por código o por nombre."""
+    por_clave = {}
+    for p in perfiles:
+        por_clave[clave(p.empleado.id)] = p.empleado.id
+        por_clave[clave(p.empleado.nombre)] = p.empleado.id
+    resultado = {}
+    for a in ausencias:
+        eid = por_clave.get(clave(a.empleado))
+        if eid and a.desde <= dia <= a.hasta:
+            resultado[eid] = a.motivo
     return resultado
 
 
 def planificar_mes(vuelos_por_dia: dict[date, list[Vuelo]], perfiles: list[Perfil], referencia: date,
-                   conf: Configuracion, segundos_por_dia: float = 10) -> CuadranteMes:
+                   conf: Configuracion, segundos_por_dia: float = 10,
+                   ausencias: list[Ausencia] | None = None) -> CuadranteMes:
     fin_anterior: dict[str, int] = {}
     dias_usados: Counter = Counter()
     dias = []
     for dia in sorted(vuelos_por_dia):
         demanda_dia = demanda_del_dia(vuelos_por_dia[dia], conf)
-        jornadas = planificar_dia(dia, demanda_dia, perfiles, referencia, fin_anterior, dias_usados, segundos_por_dia)
+        ausentes = ausentes_del_dia(ausencias or [], perfiles, dia)
+        jornadas = planificar_dia(dia, demanda_dia, perfiles, referencia, fin_anterior, dias_usados,
+                                  segundos_por_dia, ausentes)
         fin_anterior = {j.perfil.empleado.id: j.fin for j in jornadas}
         dias_usados.update(j.perfil.empleado.id for j in jornadas)
-        dias.append(DiaPlanificado(dia, len(vuelos_por_dia[dia]), demanda_dia, cobertura(jornadas), jornadas))
+        dias.append(DiaPlanificado(dia, len(vuelos_por_dia[dia]), demanda_dia, cobertura(jornadas), jornadas,
+                                   ausentes))
     return CuadranteMes(dias, perfiles, referencia)
 
 
@@ -307,5 +372,6 @@ def dias_del_mes(anio: int, mes: int) -> list[date]:
     return resultado
 
 
-def texto_jornada(inicio: int, fin: int) -> str:
-    return f"{hhmm(inicio)}\n{hhmm(fin)}"
+def texto_jornada(tramos: list[tuple[int, int]]) -> str:
+    """Como en el cuadrante de la empresa: "05:00\\n09:20", y los partidos separados por una línea en blanco."""
+    return "\n\n".join(f"{hhmm(i)}\n{hhmm(f)}" for i, f in tramos)
