@@ -80,7 +80,7 @@ class Equipo:
     turno: str
     inicio: int
     fin: int
-    seccion: str = "GRUPOS"   # GRUPOS, JARDINERAS, HIPODROMO
+    seccion: str = "GRUPOS"   # GRUPOS, REFUERZO, JARDINERAS, HIPODROMO
     miembros: dict[str, Empleado | None] = field(default_factory=dict)  # puesto -> empleado
 
     @property

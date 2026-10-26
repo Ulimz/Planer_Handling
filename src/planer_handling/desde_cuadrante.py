@@ -123,7 +123,12 @@ def generar_parrilla_cuadrante(dia: date, vuelos: list[Vuelo], filas: list[FilaC
     tareas = demanda.tareas_plataforma(vuelos, conf)
     tareas_jar = demanda.tareas_jardinera(vuelos, conf)
     transito, transito_jar = conf.servicio["transito_entre_vuelos"], conf.jardineras["transito"]
-    asignadas = asignacion.asignar(tareas, reparto.equipos, transito, segundos)
+    asignadas = asignacion.asignar(tareas, reparto.equipos, transito, segundos, minimizar_recursos=True)
+    # Los equipos que no hacen falta quedan de refuerzo (retrasos, cambios de última hora).
+    usados = set(asignadas.values())
+    for equipo in reparto.equipos:
+        if equipo.codigo not in usados:
+            equipo.seccion = "REFUERZO"
     asignadas |= asignacion.asignar(tareas_jar, reparto.jardineras, transito_jar, segundos)
 
     incidencias = list(incidencias_previas or []) + incidencias

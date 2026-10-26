@@ -65,7 +65,7 @@ def validar(equipos: list[Equipo], jardineras: list[Equipo], tareas: list[Tarea]
                                                   f"{e.id}: {puesto} caduca el {h.caducidad:%d/%m/%Y}.", equipo.codigo))
 
     for equipo in equipos:
-        if equipo.codigo not in por_recurso:
+        if equipo.codigo not in por_recurso and equipo.seccion != "REFUERZO":
             incidencias.append(Incidencia("AVISO", "EQUIPO_SIN_VUELOS",
                                           f"{equipo.codigo} no tiene vuelos asignados.", equipo.codigo))
     return incidencias

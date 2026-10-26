@@ -5,7 +5,8 @@ from ortools.sat.python import cp_model
 
 from .modelos import Tarea
 
-PENALIZACION_SIN_ASIGNAR = 1000
+PENALIZACION_SIN_ASIGNAR = 10**7
+PENALIZACION_EQUIPO_USADO = 3000  # mayor que cualquier carga máxima (2 × 1440 min)
 
 
 def dimensionar(tareas: list[Tarea], turnos, transito: int, paso: int = 15) -> dict[str, int]:
@@ -43,11 +44,14 @@ def dimensionar(tareas: list[Tarea], turnos, transito: int, paso: int = 15) -> d
     return {codigo: solver.Value(v) for codigo, v in n.items()}
 
 
-def asignar(tareas: list[Tarea], recursos: list, transito: int, segundos: float = 30) -> dict[str, str]:
+def asignar(tareas: list[Tarea], recursos: list, transito: int, segundos: float = 30,
+            minimizar_recursos: bool = False) -> dict[str, str]:
     """Devuelve {id_tarea: codigo_recurso}. Las tareas que no caben quedan fuera del resultado.
 
     Cada recurso necesita `inicio`, `fin` y `codigo`. Un recurso no puede tener dos tareas
     a la vez y entre una tarea y la siguiente deja `transito` minutos.
+    Con `minimizar_recursos`, antes de repartir la carga usa los menos recursos posibles
+    (los que sobran quedan de refuerzo).
     """
     modelo = cp_model.CpModel()
     x: dict[tuple[str, str], cp_model.IntVar] = {}
@@ -74,7 +78,15 @@ def asignar(tareas: list[Tarea], recursos: list, transito: int, segundos: float 
     for r in recursos:
         modelo.Add(sum((t.fin - t.inicio) * x[t.id, r.codigo] for t in tareas if (t.id, r.codigo) in x) <= carga_max)
 
-    modelo.Minimize(PENALIZACION_SIN_ASIGNAR * sum(sin_asignar) + carga_max)
+    objetivo = PENALIZACION_SIN_ASIGNAR * sum(sin_asignar) + carga_max
+    if minimizar_recursos:
+        for r in recursos:
+            usado = modelo.NewBoolVar(f"usado_{r.codigo}")
+            for (tid, rcod), var in x.items():
+                if rcod == r.codigo:
+                    modelo.AddImplication(var, usado)
+            objetivo += PENALIZACION_EQUIPO_USADO * usado
+    modelo.Minimize(objetivo)
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = segundos
     solver.parameters.num_workers = 8

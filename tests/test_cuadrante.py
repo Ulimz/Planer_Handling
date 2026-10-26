@@ -89,3 +89,5 @@ def test_cada_tl_abre_su_equipo(tmp_path, conf):
     p = generar_parrilla_cuadrante(dia, [Vuelo(dia, vuelo_out="FR1", destino="STN", std=420)],
                                    leer_cuadrante(ruta, 2025), conf, segundos=5)
     assert len(p.reparto.equipos) == 2
+    # Un solo vuelo: basta un equipo y el otro queda de refuerzo.
+    assert sorted(e.seccion for e in p.reparto.equipos) == ["GRUPOS", "REFUERZO"]
