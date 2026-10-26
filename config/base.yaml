@@ -1,0 +1,45 @@
+# Configuración de una base. Todos los tiempos en minutos.
+# Los valores son de partida: ajústalos a los estándares reales de la base.
+
+zona_horaria: Europe/Madrid
+
+# Fecha en la que empieza el ciclo de cada patrón (día 1 de la rotación A / 1).
+inicio_ciclos: 2026-01-05
+
+rotaciones:
+  "6x3":  {trabajo: 6, libre: 3, grupos: {A: 0, B: 3, C: 6}}
+  "4x4":  {trabajo: 4, libre: 4, grupos: {"1": 0, "2": 2, "3": 4, "4": 6}}
+  "5x2":  {trabajo: 5, libre: 2, grupos: {}}   # parciales, discontinuos y eventuales
+
+turnos:
+  M:  {inicio: "04:30", fin: "12:30"}   # mañana, 8 h
+  I:  {inicio: "09:00", fin: "17:00"}   # intermedio, 8 h
+  T:  {inicio: "12:30", fin: "20:30"}   # tarde, 8 h
+  N:  {inicio: "16:30", fin: "00:30"}   # cierre, 8 h
+  MM: {inicio: "04:30", fin: "14:30"}   # mando intermedio mañana, 10 h
+  MT: {inicio: "14:00", fin: "00:00"}   # mando intermedio tarde, 10 h
+  PM: {inicio: "05:00", fin: "10:00"}   # parcial banco de primera hora
+  PT: {inicio: "17:00", fin: "22:00"}   # parcial pico de tarde
+
+# Turnos que puede usar cada colectivo.
+turnos_plataforma: [M, I, T, N]
+turnos_jardineras: [M, I, T, N]
+turnos_hipodromo: [M, T]
+turnos_mandos: [MM, MT]
+turnos_parciales: [PM, PT]
+
+# Puestos de un equipo de plataforma, en orden: 1 = TL, 2 = PB/TOW.
+equipo_plataforma: [TL, PB/TOW, Carretero, Cintero, Operario]
+
+# Ventana de trabajo del equipo respecto a STA/STD.
+servicio:
+  giro:          {antes_sta: 10, despues_std: 5}
+  solo_salida:   {antes_std: 50, despues_std: 5}
+  solo_llegada:  {antes_sta: 10, despues_sta: 40}
+  transito_entre_vuelos: 10
+
+# Autobuses para vuelos en remoto.
+jardineras:
+  llegada: {desde_sta: 0, hasta_sta: 20}
+  salida:  {antes_std: 40, hasta_antes_std: 15}
+  transito: 5
