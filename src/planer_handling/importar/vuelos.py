@@ -2,6 +2,7 @@
 
 PACOTRON: FLIGHT DATE. | FLIGHT IN | ORIG | STA | FLIGHT OUT | DEST | STD
 OMS:      FLIGHT DATE | ARRIVALS - FLT.NO. | PREV PRT | STA | DEPARTURES - FLT.NO. | NEXT PRT | STD
+FLIGHTS:  FLIGHT DATE. | FLIGHT Nº IN | ORIG | STA | FLIGHT Nº OUT | DEST | STD (descarga mensual)
 
 Las horas de estos archivos van en hora Zulu (UTC) y se pasan a hora local de la base.
 Columnas opcionales: tipo de avión y puesto (contacto o remoto).
@@ -22,6 +23,7 @@ CAMPOS = ["FECHA", "VUELO_IN", "ORIGEN", "STA", "VUELO_OUT", "DESTINO", "STD"]
 FORMATOS = {
     "PACOTRON": ["FLIGHT DATE.", "FLIGHT IN", "ORIG", "STA", "FLIGHT OUT", "DEST", "STD"],
     "OMS": ["FLIGHT DATE", "ARRIVALS - FLT.NO.", "PREV PRT", "STA", "DEPARTURES - FLT.NO.", "NEXT PRT", "STD"],
+    "FLIGHTS": ["FLIGHT DATE.", "FLIGHT NO IN", "ORIG", "STA", "FLIGHT NO OUT", "DEST", "STD"],
 }
 OPCIONALES = {
     "TIPO": ["AC TYPE", "A/C TYPE", "TYPE", "TIPO", "TIPO AVION", "EQUIPO", "AIRCRAFT SUB"],

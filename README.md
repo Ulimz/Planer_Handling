@@ -49,3 +49,21 @@ La parrilla se guarda en `salida/parrilla_AAAA-MM-DD.xlsx`. Los tiempos de servi
 - Estándares por tipo de avión y compañía, y tiempos de desplazamiento entre puestos.
 - Reglas de convenio (descansos, horas anuales, festivos) y planificación mensual y anual.
 - Interfaz web para planificadores y RAMPCOs.
+
+## Cuadrante mensual a partir de los vuelos del mes
+
+```bash
+planer-mes --mes 2026-11 --vuelos Flights-noviembre.xlsx \
+           --referencia cuadrante_octubre.xlsx --mes-referencia 2026-10
+```
+
+- Del cuadrante de referencia aprende, para cada persona: función, rotación (6x3, 4x4 o irregular), qué días de su ciclo son de mañana o de tarde y cuántas horas hace al día.
+- La rotación continúa en el mes nuevo sin reiniciarse.
+- Cada día calcula cuántos equipos hacen falta cada 15 minutos y elige la hora de entrada de cada persona para cubrirlo, con 12 horas de descanso entre jornadas.
+- A las personas irregulares solo las llama si hacen falta, sin pasar de los días que hicieron en el mes de referencia.
+- El Excel de salida tiene el formato del cuadrante de la empresa, así que se puede pasar después a `planer --cuadrante`. Incluye las hojas Cobertura, Horas y Curva.
+
+Pendiente:
+- ausencias del mes nuevo;
+- turnos partidos;
+- demanda de jardineras e hipódromo, que por ahora mantienen su horario habitual.

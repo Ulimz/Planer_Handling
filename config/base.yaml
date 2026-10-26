@@ -55,6 +55,7 @@ funciones:
   PB/JAR:    {categoria: PB/TOW,           habilitaciones: [PB/TOW, Carretero, Cintero, Operario, Jardinero]}
   "PB*/JAR": {categoria: PB/TOW,           habilitaciones: [PB/TOW, Carretero, Cintero, Operario, Jardinero]}
   TOW/JAR:   {categoria: PB/TOW,           habilitaciones: [PB/TOW, Carretero, Cintero, Operario, Jardinero]}
+  "TOW*":    {categoria: PB/TOW,           habilitaciones: [PB/TOW, Carretero, Cintero, Operario]}
   PCP:       {categoria: Operario,         habilitaciones: [Carretero, Cintero, Operario]}
   GHA:       {categoria: Operario,         habilitaciones: [Operario]}
   JAR:       {categoria: Jardinero,        habilitaciones: [Jardinero]}

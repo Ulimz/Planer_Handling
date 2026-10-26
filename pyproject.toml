@@ -15,6 +15,7 @@ dev = ["pytest>=8"]
 
 [project.scripts]
 planer = "planer_handling.cli:main"
+planer-mes = "planer_handling.cli_mes:main"
 
 [build-system]
 requires = ["setuptools>=68"]
