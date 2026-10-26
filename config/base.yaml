@@ -43,3 +43,24 @@ jardineras:
   llegada: {desde_sta: 0, hasta_sta: 20}
   salida:  {antes_std: 40, hasta_antes_std: 15}
   transito: 5
+
+# Funciones del cuadrante (columna DEPART.) -> categoría y puestos que puede cubrir.
+# PENDIENTE DE CONFIRMAR con la base: PCP, GHA, BH/BHS/BHPCP y el asterisco de PB*.
+funciones:
+  TL:        {categoria: TL,               habilitaciones: [TL, Operario]}
+  PB:        {categoria: PB/TOW,           habilitaciones: [PB/TOW, Carretero, Cintero, Operario]}
+  "PB*":     {categoria: PB/TOW,           habilitaciones: [PB/TOW, Carretero, Cintero, Operario]}
+  PB/JAR:    {categoria: PB/TOW,           habilitaciones: [PB/TOW, Carretero, Cintero, Operario, Jardinero]}
+  "PB*/JAR": {categoria: PB/TOW,           habilitaciones: [PB/TOW, Carretero, Cintero, Operario, Jardinero]}
+  TOW/JAR:   {categoria: PB/TOW,           habilitaciones: [PB/TOW, Carretero, Cintero, Operario, Jardinero]}
+  PCP:       {categoria: Operario,         habilitaciones: [Carretero, Cintero, Operario]}
+  GHA:       {categoria: Operario,         habilitaciones: [Operario]}
+  JAR:       {categoria: Jardinero,        habilitaciones: [Jardinero]}
+  BH:        {categoria: Hipodromo,        habilitaciones: [Hipodromo]}
+  BHS:       {categoria: Hipodromo,        habilitaciones: [Hipodromo]}
+  BHPCP:     {categoria: Hipodromo,        habilitaciones: [Hipodromo, Operario]}
+  RCO:       {categoria: Mando intermedio, habilitaciones: [Mando intermedio]}
+  ARCO:      {categoria: Mando intermedio, habilitaciones: [Mando intermedio]}
+
+# Con cuadrante: solape mínimo (minutos) para que dos personas formen equipo.
+solape_minimo_equipo: 120

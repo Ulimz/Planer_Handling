@@ -37,7 +37,7 @@ def validar(equipos: list[Equipo], jardineras: list[Equipo], tareas: list[Tarea]
                 incidencias.append(Incidencia("PENDIENTE", "VUELOS_SOLAPADOS",
                                               f"{codigo}: {a.vuelo.codigo} y {b.vuelo.codigo} se solapan.", codigo))
 
-    vistos: dict[str, str] = {}
+    vistos: dict[str, list[Equipo]] = {}
     for equipo in equipos + jardineras:
         for puesto, e in equipo.miembros.items():
             if e is None:
@@ -46,10 +46,13 @@ def validar(equipos: list[Equipo], jardineras: list[Equipo], tareas: list[Tarea]
                     incidencias.append(Incidencia(gravedad, "EQUIPO_INCOMPLETO",
                                                   f"{equipo.codigo}: puesto {puesto} vacío.", equipo.codigo))
                 continue
-            if e.id in vistos:
-                incidencias.append(Incidencia("PENDIENTE", "EMPLEADO_DUPLICADO",
-                                              f"{e.id} está en {vistos[e.id]} y en {equipo.codigo}.", equipo.codigo))
-            vistos[e.id] = equipo.codigo
+            # Quien tiene turno partido puede estar en dos equipos si los horarios no se pisan.
+            for otro in vistos.get(e.id, []):
+                if otro.inicio < equipo.fin and equipo.inicio < otro.fin:
+                    incidencias.append(Incidencia("PENDIENTE", "EMPLEADO_DUPLICADO",
+                                                  f"{e.id} está en {otro.codigo} y en {equipo.codigo} a la vez.",
+                                                  equipo.codigo))
+            vistos.setdefault(e.id, []).append(equipo)
             if puesto == "TL" and not e.habilitado("TL", dia):
                 incidencias.append(Incidencia("AVISO", "TL_NO_CUALIFICADO", f"{equipo.codigo}: {e.id} sin habilitación TL.",
                                               equipo.codigo))

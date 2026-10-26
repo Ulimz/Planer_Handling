@@ -30,11 +30,14 @@ def _tabla(ws, cabeceras: list[str], filas: list[list]) -> None:
     ws.freeze_panes = "A2"
 
 
-def _nombre(e) -> str:
-    return e.id if e else "VACANTE"
+def exportar(parrilla: Parrilla, ruta: str | Path, puestos: list[str], con_nombres: bool = False) -> Path:
+    """Por defecto identifica a cada persona solo por su código; `con_nombres` añade el nombre."""
 
+    def _nombre(e) -> str:
+        if not e:
+            return "VACANTE"
+        return f"{e.id} {e.nombre}" if con_nombres and e.nombre else e.id
 
-def exportar(parrilla: Parrilla, ruta: str | Path, puestos: list[str]) -> Path:
     ruta = Path(ruta)
     ruta.parent.mkdir(parents=True, exist_ok=True)
     r = parrilla.reparto

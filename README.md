@@ -26,6 +26,14 @@ python scripts/generar_plantilla_ficticia.py --escala 2
 planer --fecha 2027-07-15 --vuelos ejemplos/vuelos_ficticios.xlsx --plantilla ejemplos/plantilla_ficticia.xlsx
 ```
 
+Con el horario real de cada persona (cuadrante mensual) y los vuelos de una parrilla diaria ya hecha:
+
+```bash
+planer --fecha 2025-02-06 --cuadrante datos/Turnos_Febrero.xlsx --vuelos datos/parrillas.xlsx --hoja 29-10
+```
+
+En este modo cada TL disponible abre un equipo con su horario, el resto de puestos se cubre con quien más coincide con él (los turnos partidos cuentan como dos tramos) y las funciones del cuadrante (TL, PB*/JAR, PCP…) se traducen a puestos con la tabla `funciones` de `config/base.yaml`. Por defecto la parrilla muestra solo códigos de empleado; `--con-nombres` añade los nombres.
+
 La parrilla se guarda en `salida/parrilla_AAAA-MM-DD.xlsx`. Los tiempos de servicio, turnos y rotaciones se ajustan en `config/base.yaml`.
 
 ## Datos
@@ -35,7 +43,9 @@ La parrilla se guarda en `salida/parrilla_AAAA-MM-DD.xlsx`. Los tiempos de servi
 
 ## Pendiente
 
-- Leer el cuadrante mensual y la hoja de grupos con el formato de PARRITRON y comparar con la parrilla real.
+- Confirmar el significado de las funciones PCP, GHA, BH* y PB* y de los colores del cuadrante.
+- Rotaciones reales en el modo plantilla: 6x3 = 3 mañanas + 3 tardes + 3 libres; 4x4 = 2 + 2 + 4.
+- Comparar grupo a grupo con la parrilla real usando cuadrante y vuelos del mismo periodo.
 - Estándares por tipo de avión y compañía, y tiempos de desplazamiento entre puestos.
 - Reglas de convenio (descansos, horas anuales, festivos) y planificación mensual y anual.
 - Interfaz web para planificadores y RAMPCOs.

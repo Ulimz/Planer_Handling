@@ -68,6 +68,7 @@ class Empleado:
     habilitaciones: list[Habilitacion] = field(default_factory=list)
     llamamiento: tuple[date, date] | None = None
     alta: date | None = None
+    nombre: str = ""
 
     def habilitado(self, puesto: str, dia: date) -> bool:
         return any(h.nombre == puesto and h.vigente(dia) for h in self.habilitaciones)
