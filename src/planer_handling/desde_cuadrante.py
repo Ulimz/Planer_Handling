@@ -39,13 +39,26 @@ def empleados_desde_cuadrante(filas: list[FilaCuadrante], conf: Configuracion) -
     return empleados, incidencias
 
 
-def tramos_del_dia(filas: list[FilaCuadrante], empleados: list[Empleado], dia: date) -> list[Tramo]:
-    resultado = []
+def tramos_del_dia(filas: list[FilaCuadrante], empleados: list[Empleado], dia: date,
+                   marcas: dict | None = None) -> tuple[list[Tramo], list[Incidencia]]:
+    """Tramos de quien trabaja ese día. Una celda con un color de ausencia (vacaciones, baja,
+    permiso, formación, sanción) deja a la persona fuera aunque tenga horas escritas."""
+    marcas = marcas or {}
+    resultado, incidencias = [], []
     for fila, e in zip(filas, empleados):
         jornada = fila.jornadas.get(dia)
-        if jornada:
-            resultado += [Tramo(e, i, f, jornada.marca) for i, f in jornada.tramos]
-    return resultado
+        if not jornada:
+            continue
+        marca = marcas.get(jornada.marca)
+        if marca and not marca["disponible"]:
+            incidencias.append(Incidencia("AVISO", "AUSENCIA", f"{e.id} ({fila.funcion}): {marca['motivo']}.", e.id))
+            continue
+        if jornada.marca and not marca:
+            incidencias.append(Incidencia("AVISO", "MARCA_DESCONOCIDA",
+                                          f"{e.id}: color {jornada.marca} sin significado en config; se cuenta como disponible.",
+                                          e.id))
+        resultado += [Tramo(e, i, f, jornada.marca) for i, f in jornada.tramos]
+    return resultado, incidencias
 
 
 def formar_equipos_por_horario(tramos: list[Tramo], puestos: list[str], solape_minimo: int,
@@ -88,7 +101,8 @@ def formar_equipos_por_horario(tramos: list[Tramo], puestos: list[str], solape_m
 def generar_parrilla_cuadrante(dia: date, vuelos: list[Vuelo], filas: list[FilaCuadrante], conf: Configuracion,
                                incidencias_previas: list[Incidencia] | None = None, segundos: float = 30) -> Parrilla:
     empleados, incidencias = empleados_desde_cuadrante(filas, conf)
-    tramos = tramos_del_dia(filas, empleados, dia)
+    tramos, ausencias = tramos_del_dia(filas, empleados, dia, conf.datos.get("marcas"))
+    incidencias += ausencias
     plataforma = [t for t in tramos if t.empleado.categoria in conf.equipo_plataforma]
     equipos, sobrantes = formar_equipos_por_horario(plataforma, conf.equipo_plataforma,
                                                     conf.datos.get("solape_minimo_equipo", 120), dia)

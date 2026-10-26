@@ -53,3 +53,14 @@ def test_parrilla_desde_cuadrante(tmp_path, conf):
     assert (equipo.inicio, equipo.fin) == (300, 765)
     assert all(t.id in p.asignadas for t in p.tareas)
     assert len(p.reparto.jardineras) == 1 and len(p.reparto.mandos) == 1
+
+
+def test_color_de_vacaciones_deja_fuera_aunque_tenga_horas(tmp_path, conf):
+    ruta = tmp_path / "turnos.xlsx"
+    _cuadrante(ruta)  # la fila 3 (PB*/JAR, 1 de febrero) está en amarillo
+    dia = date(2025, 2, 1)
+    p = generar_parrilla_cuadrante(dia, [Vuelo(dia, vuelo_out="FR1", destino="STN", std=360)],
+                                   leer_cuadrante(ruta, 2025), conf, segundos=5)
+    ausencias = [i for i in p.incidencias if i.codigo == "AUSENCIA"]
+    assert len(ausencias) == 1 and "Vacaciones" in ausencias[0].detalle
+    assert p.reparto.equipos[0].miembros["PB/TOW"].contrato == "PB*/JAR"  # lo cubre la otra persona PB*/JAR

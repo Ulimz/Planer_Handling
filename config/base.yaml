@@ -45,7 +45,9 @@ jardineras:
   transito: 5
 
 # Funciones del cuadrante (columna DEPART.) -> categoría y puestos que puede cubrir.
-# PENDIENTE DE CONFIRMAR con la base: PCP, GHA, BH/BHS/BHPCP y el asterisco de PB*.
+# PB*: pushback solo con barra; TOW: pushback eléctrico (a efectos de programación, ambos PB/TOW).
+# PCP: permiso de conducción en plataforma. GHA: sin permiso de conducir.
+# BH: personal de hipódromo; BHS: supervisor de hipódromo; BHPCP: hipódromo con PCP.
 funciones:
   TL:        {categoria: TL,               habilitaciones: [TL, Operario]}
   PB:        {categoria: PB/TOW,           habilitaciones: [PB/TOW, Carretero, Cintero, Operario]}
@@ -57,10 +59,20 @@ funciones:
   GHA:       {categoria: Operario,         habilitaciones: [Operario]}
   JAR:       {categoria: Jardinero,        habilitaciones: [Jardinero]}
   BH:        {categoria: Hipodromo,        habilitaciones: [Hipodromo]}
-  BHS:       {categoria: Hipodromo,        habilitaciones: [Hipodromo]}
-  BHPCP:     {categoria: Hipodromo,        habilitaciones: [Hipodromo, Operario]}
+  BHS:       {categoria: Hipodromo,        habilitaciones: [Hipodromo, Supervisor hipodromo]}
+  BHPCP:     {categoria: Hipodromo,        habilitaciones: [Hipodromo, Carretero, Operario]}
   RCO:       {categoria: Mando intermedio, habilitaciones: [Mando intermedio]}
   ARCO:      {categoria: Mando intermedio, habilitaciones: [Mando intermedio]}
+
+# Colores del cuadrante (RGB de la celda) -> motivo y si la persona está disponible ese día.
+marcas:
+  FFFFFF00: {motivo: Vacaciones,                  disponible: false}   # amarillo
+  FF7030A0: {motivo: Baja por enfermedad común,   disponible: false}   # morado
+  FF00B050: {motivo: Baja laboral,                disponible: false}   # verde
+  FF00B0F0: {motivo: Permiso retribuido,          disponible: false}   # azul
+  FFFF00FF: {motivo: Cambio de función,           disponible: true}    # fucsia
+  FFF00093: {motivo: Formación,                   disponible: false}   # rosa
+  FF000000: {motivo: Sanción disciplinaria,       disponible: false}   # negro
 
 # Con cuadrante: solape mínimo (minutos) para que dos personas formen equipo.
 solape_minimo_equipo: 120
