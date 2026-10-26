@@ -16,6 +16,7 @@ from planer_handling.anual_excel import exportar_anio
 from planer_handling.configuracion import Configuracion
 from planer_handling.desde_cuadrante import generar_parrilla_cuadrante
 from planer_handling.importar.ausencias import leer_ausencias
+from planer_handling.importar.contratos import leer_contratos
 from planer_handling.importar.cuadrante import leer_cuadrante
 from planer_handling.importar.parrilla_real import leer_vuelos_parrilla
 from planer_handling.importar.vuelos import leer_vuelos
@@ -214,6 +215,9 @@ with mensual_tab:
     anio_ref, mes_ref = elegir_mes("Mes del cuadrante de referencia", hoy.replace(day=1), "ref")
     ausencias_archivo = st.file_uploader("Ausencias del mes (opcional): Empleado, Desde, Hasta, Motivo",
                                          type=["xlsx", "csv"], key="aus")
+    contratos_archivo = st.file_uploader("Contratos (opcional): Empleado, Contrato. A los parciales se les "
+                                         "ajustan las horas a los vuelos; a los TC se les dan sus 8 horas.",
+                                         type=["xlsx", "csv"], key="con")
     st.caption("Las ausencias apuntadas en la pestaña Plantilla y ausencias se tienen en cuenta solas.")
     con_nombres = st.checkbox("Mostrar nombres (si no, solo códigos)", value=True, key="nm")
     segundos = st.slider("Tiempo de cálculo por día (segundos)", 10, 60, 30, key="seg")
@@ -225,7 +229,8 @@ with mensual_tab:
                 ruta_vuelos, ruta_ref = guardar(vuelos_mes, tmp), guardar(referencia, tmp)
                 with st.status("Leyendo archivos…") as estado:
                     dias_ref = dias_del_mes(anio_ref, mes_ref)
-                    perfiles = aprender_perfiles(leer_cuadrante(ruta_ref, anio_ref), dias_ref, conf)
+                    contratos = leer_contratos(guardar(contratos_archivo, tmp)) if contratos_archivo else None
+                    perfiles = aprender_perfiles(leer_cuadrante(ruta_ref, anio_ref), dias_ref, conf, contratos)
                     vuelos = {d: leer_vuelos(ruta_vuelos, d, conf.zona_horaria)[0] for d in dias_del_mes(anio, mes)}
                     ausencias = almacen.ausencias()
                     if ausencias_archivo:

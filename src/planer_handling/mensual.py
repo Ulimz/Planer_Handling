@@ -62,6 +62,10 @@ class Perfil:
     partido: tuple[int, int, int] | None = None   # (primer tramo, pausa, segundo tramo) si hace partidos
     dias_referencia: int = 0
     minutos_referencia: int = 0
+    contrato: str = ""
+    duraciones: list[int] = field(default_factory=list)   # minutos posibles; vacío = solo `duracion`
+    horario_fijo: bool = False          # concreción horaria: entra siempre a su hora habitual
+    jornada_minima: int = 0             # minutos por debajo de los que no se recorta su jornada
 
     def ciclo(self) -> tuple[int, int] | None:
         return ROTACIONES.get(self.patron)
@@ -144,7 +148,11 @@ def _mejor_rotacion(trabajo: list[int]) -> tuple[str, int, float]:
     return mejor
 
 
-def aprender_perfiles(filas: list[FilaCuadrante], dias: list[date], conf: Configuracion) -> list[Perfil]:
+def aprender_perfiles(filas: list[FilaCuadrante], dias: list[date], conf: Configuracion,
+                      contratos: dict[str, str] | None = None) -> list[Perfil]:
+    """`contratos`: nombre de la persona -> tipo de contrato (TC, TP…, ver `contratos` en la config)."""
+    reglas = conf.datos.get("contratos", {})
+    contrato_de = {clave(n): c for n, c in (contratos or {}).items()}
     empleados, _ = empleados_desde_cuadrante(filas, conf)
     perfiles = []
     for fila, empleado in zip(filas, empleados):
@@ -179,6 +187,22 @@ def aprender_perfiles(filas: list[FilaCuadrante], dias: list[date], conf: Config
             p.fases[pos] = fase
             inicios_por_fase[fase] += [x for x in inicios if (x < MEDIODIA) == (fase == "M")]
         p.inicio_habitual = {f: int(statistics.median(x)) for f, x in inicios_por_fase.items() if x}
+        p.contrato = contrato_de.get(clave(fila.nombre), "")
+        regla = reglas.get(p.contrato, {})
+        if not p.contrato and p.duracion < 7 * 60 + 30:
+            regla = reglas.get(conf.datos.get("contrato_parcial_por_defecto", ""), {})
+        p.horario_fijo = bool(regla.get("horario_fijo"))
+        if regla.get("jornadas_h") and not p.horario_fijo:
+            p.duraciones = [int(h * 60) for h in regla["jornadas_h"]]
+            if len(p.duraciones) == 1:
+                p.duracion, p.duraciones, p.partido = p.duraciones[0], [], None
+            else:
+                media = p.minutos_referencia / max(1, p.dias_referencia)
+                p.jornada_minima = max(min(p.duraciones),
+                                       int(conf.datos.get("jornada_minima_respecto_referencia", 0) * media) // PASO * PASO)
+                # El optimizador le pone la jornada más larga posible (cubre más) y luego se recorta
+                # lo que sobre (ver _recortar).
+                p.duracion = max(p.duraciones)
         perfiles.append(p)
     return perfiles
 
@@ -231,6 +255,9 @@ def demanda_del_dia(vuelos: list[Vuelo], conf: Configuracion) -> dict[str, list[
 def _opciones(perfil: Perfil, fase: str, fin_anterior: int | None) -> list[list[tuple[int, int]]]:
     """Jornadas posibles: un bloque de sus horas habituales y, si hace partidos, también dos
     tramos con sus duraciones habituales y una pausa de 1 a 5 horas."""
+    if perfil.horario_fijo:
+        inicio = perfil.inicio_habitual.get(fase) or perfil.inicio_habitual[""]
+        return [[(inicio, inicio + perfil.duracion)]]
     inicios = _opciones_inicio(fase, fin_anterior)
     opciones = [[(i, i + perfil.duracion)] for i in inicios]
     if perfil.partido:
@@ -349,17 +376,16 @@ def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[
         modelo.Add(extra_tl <= tl)
         modelo.Add(extra_pb <= pb)
         deficit += [3000 * faltas["TL"], 3000 * faltas["PB/TOW"], 1000 * faltas["Operario"]]
-        # Al reorganizar, pista completa (también de estas variables) para que el optimizador parta
-        # del horario publicado y no lo empeore si se le acaba el tiempo.
+        # Pista completa (también de estas variables): el optimizador parte del plan de reserva (el
+        # horario publicado o el habitual) y siempre tiene una solución aunque se le acabe el tiempo.
         r_tl, r_pb, r_op = (cubre_reserva[r][k] for r in ("TL", "PB/TOW", "Operario"))
         sobra_tl, sobra_pb = max(0, r_tl - demanda_dia["TL"][k]), max(0, r_pb - demanda_dia["PB/TOW"][k])
         falta = {"TL": max(0, demanda_dia["TL"][k] - r_tl), "PB/TOW": max(0, demanda_dia["PB/TOW"][k] - r_pb),
                  "Operario": max(0, demanda_dia["Operario"][k] - r_op - sobra_tl - sobra_pb)}
-        if actual is not None:
-            modelo.AddHint(extra_tl, sobra_tl)
-            modelo.AddHint(extra_pb, sobra_pb)
-            for r in PLANIFICADOS:
-                modelo.AddHint(faltas[r], falta[r])
+        modelo.AddHint(extra_tl, sobra_tl)
+        modelo.AddHint(extra_pb, sobra_pb)
+        for r in PLANIFICADOS:
+            modelo.AddHint(faltas[r], falta[r])
         coste_reserva += 3000 * (falta["TL"] + falta["PB/TOW"]) + 1000 * falta["Operario"]
     modelo.Minimize(sum(deficit) + sum(coste))
 
@@ -367,12 +393,44 @@ def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[
     solver.parameters.max_time_in_seconds = segundos
     solver.parameters.num_workers = 8
     estado = solver.Solve(modelo)
-    peor = actual is not None and estado == cp_model.FEASIBLE and solver.ObjectiveValue() > coste_reserva
+    peor = estado == cp_model.FEASIBLE and solver.ObjectiveValue() > coste_reserva
     if estado not in (cp_model.OPTIMAL, cp_model.FEASIBLE) or peor:
         # Sin tiempo para encontrar nada mejor: cada uno con su horario habitual (o el publicado).
-        return fijas + plan_reserva
-    return fijas + [Jornada(por_id[eid], dia, tramos)
-                    for (eid, _), (x, tramos) in eleccion.items() if solver.Value(x)]
+        jornadas = plan_reserva
+    else:
+        jornadas = [Jornada(por_id[eid], dia, tramos) for (eid, _), (x, tramos) in eleccion.items() if solver.Value(x)]
+    if actual is None:
+        _recortar(jornadas, demanda_dia)
+    return fijas + jornadas
+
+
+def _recortar(jornadas: list[Jornada], demanda_dia: dict[str, list[int]]) -> None:
+    """Acorta por los extremos las jornadas de quien tiene horas variables (parciales) mientras
+    el trozo que se quita sobre en esa franja. Así no se dan más horas de las que piden los vuelos."""
+    cob = cobertura(jornadas)
+    n = franjas_del_dia()
+
+    def puede_quitar(rol: str, k: int) -> bool:
+        tl, pb, op = (cob[r][k] - (r == rol) for r in ("TL", "PB/TOW", "Operario"))
+        dtl, dpb, dop = (demanda_dia[r][k] for r in ("TL", "PB/TOW", "Operario"))
+        return tl >= dtl and pb >= dpb and op + (tl - dtl) + (pb - dpb) >= dop
+
+    for j in sorted(jornadas, key=lambda j: -j.minutos):
+        p = j.perfil
+        rol = p.empleado.categoria
+        if not p.duraciones or rol not in cob:
+            continue
+        minimo = max(min(p.duraciones), p.jornada_minima)
+        cambiado = True
+        while cambiado and j.minutos - PASO >= minimo:
+            cambiado = False
+            for extremo in (0, -1):
+                inicio, fin = j.tramos[extremo]
+                k = _franja(inicio) if extremo == 0 else _franja(fin - 1)
+                if fin - inicio > PASO and 0 <= k < n and puede_quitar(rol, k) and j.minutos - PASO >= minimo:
+                    j.tramos[extremo] = (inicio + PASO, fin) if extremo == 0 else (inicio, fin - PASO)
+                    cob[rol][k] -= 1
+                    cambiado = True
 
 
 def cobertura(jornadas: list[Jornada]) -> dict[str, list[int]]:

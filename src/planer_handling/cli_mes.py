@@ -11,6 +11,7 @@ from pathlib import Path
 
 from .configuracion import Configuracion
 from .importar.ausencias import leer_ausencias
+from .importar.contratos import leer_contratos
 from .importar.cuadrante import leer_cuadrante
 from .importar.vuelos import leer_vuelos
 from .mensual import aprender_perfiles, dias_del_mes, planificar_mes
@@ -29,6 +30,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--referencia", required=True, help="Cuadrante de un mes anterior con la plantilla")
     p.add_argument("--mes-referencia", required=True, type=_mes, help="Mes del cuadrante de referencia (AAAA-MM)")
     p.add_argument("--ausencias", help="Listado de ausencias del mes (EMPLEADO, DESDE, HASTA, MOTIVO)")
+    p.add_argument("--contratos", help="Tipo de contrato de cada persona (EMPLEADO, CONTRATO)")
     p.add_argument("--config", default="config/base.yaml")
     p.add_argument("--salida", help="Excel de salida (por defecto salida/cuadrante_AAAA-MM.xlsx)")
     p.add_argument("--horas-locales", action="store_true", help="Las horas del archivo ya son locales, no Zulu")
@@ -38,7 +40,8 @@ def main(argv: list[str] | None = None) -> None:
 
     conf = Configuracion.cargar(args.config)
     dias_ref = dias_del_mes(*args.mes_referencia)
-    perfiles = aprender_perfiles(leer_cuadrante(args.referencia, args.mes_referencia[0]), dias_ref, conf)
+    contratos = leer_contratos(args.contratos) if args.contratos else None
+    perfiles = aprender_perfiles(leer_cuadrante(args.referencia, args.mes_referencia[0]), dias_ref, conf, contratos)
     vuelos = {d: leer_vuelos(args.vuelos, d, conf.zona_horaria, horas_utc=not args.horas_locales)[0]
               for d in dias_del_mes(*args.mes)}
     ausencias = leer_ausencias(args.ausencias) if args.ausencias else []

@@ -70,3 +70,22 @@ def test_partidos_y_ausencias(conf, tmp_path):
     assert {j.perfil.empleado.nombre for j in dp.jornadas} == {"TL1", "PB1", "PARTIDO"}
     assert len(next(j for j in dp.jornadas if j.perfil.empleado.nombre == "PARTIDO").tramos) == 2
     assert mensual.texto_jornada([(300, 420), (600, 720)]) == "05:00\n07:00\n\n10:00\n12:00"
+
+
+def test_contratos_parcial_se_recorta_y_completo_no(conf):
+    # Mucha gente de mañana para un solo giro: al parcial se le recorta la jornada, al TC no.
+    filas = [_fila("TL", "TL1", 0), _fila("PB", "PB1", 0), _fila("PCP", "COMPLETO", 0),
+             _fila("PCP", "PARCIAL", 0, manana=(300, 660)), _fila("PCP", "FIJO", 0, manana=(360, 600))]
+    contratos = {"COMPLETO": "TC", "PARCIAL": "TP", "FIJO": "TCC"}
+    perfiles = mensual.aprender_perfiles(filas, OCTUBRE, conf, contratos)
+    por_nombre = {p.empleado.nombre: p for p in perfiles}
+    assert por_nombre["COMPLETO"].duracion == 480 and not por_nombre["COMPLETO"].duraciones
+    assert por_nombre["PARCIAL"].duraciones and por_nombre["FIJO"].horario_fijo
+    dia = date(2026, 11, 6)
+    vuelos = {dia: [Vuelo(dia, vuelo_in="FR1", origen="STN", sta=8 * 60, vuelo_out="FR2", destino="STN", std=8 * 60 + 30)]}
+    cm = mensual.planificar_mes(vuelos, perfiles, OCTUBRE[0], conf, segundos_por_dia=5)
+    jornadas = {j.perfil.empleado.nombre: j for j in cm.dias[0].jornadas}
+    assert jornadas["COMPLETO"].minutos == 480
+    assert jornadas["FIJO"].tramos == [(360, 600)]
+    assert jornadas["PARCIAL"].minutos < 360 and jornadas["PARCIAL"].minutos >= por_nombre["PARCIAL"].jornada_minima
+    assert all(d == 0 for r in ("TL", "PB/TOW", "Operario") for d in [cm.dias[0].deficit(r)])

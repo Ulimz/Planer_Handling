@@ -62,6 +62,7 @@ planer-mes --mes 2026-11 --vuelos Flights-noviembre.xlsx \
 - Cada día calcula cuántos equipos hacen falta cada 15 minutos y elige la hora de entrada de cada persona para cubrirlo, con 12 horas de descanso entre jornadas.
 - A las personas irregulares solo las llama si hacen falta, sin pasar de los días que hicieron en el mes de referencia.
 - Quien hacía turnos partidos puede recibir un partido: sus dos tramos habituales con una pausa de 1 a 5 horas.
+- Con `--contratos contratos.xlsx` (columnas EMPLEADO, CONTRATO) aplica las reglas de `contratos` de la configuración: los TC mantienen sus 8 horas, a los de concreción horaria no se les mueve la hora y a los parciales se les recortan las horas que sobran según los vuelos, sin bajar del mínimo `jornada_minima_respecto_referencia`.
 - Con `--ausencias listado.xlsx` (columnas EMPLEADO, DESDE, HASTA, MOTIVO) deja fuera a quien está de vacaciones, baja o permiso. Esos días salen con el motivo y el color de la empresa.
 - El Excel de salida tiene el formato del cuadrante de la empresa, así que se puede pasar después a `planer --cuadrante`. Incluye las hojas Cobertura, Horas y Curva.
 
