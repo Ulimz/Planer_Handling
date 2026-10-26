@@ -65,7 +65,7 @@ with mensual_tab:
     ausencias_archivo = st.file_uploader("Ausencias del mes (opcional): Empleado, Desde, Hasta, Motivo",
                                          type=["xlsx", "csv"], key="aus")
     con_nombres = st.checkbox("Mostrar nombres (si no, solo códigos)", key="nm")
-    segundos = st.slider("Tiempo de cálculo por día (segundos)", 5, 60, 20, key="seg")
+    segundos = st.slider("Tiempo de cálculo por día (segundos)", 10, 60, 30, key="seg")
 
     if st.button("Generar cuadrante", type="primary", disabled=not (vuelos_mes and referencia)):
         with tempfile.TemporaryDirectory() as tmp:

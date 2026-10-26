@@ -258,6 +258,7 @@ def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[
     eleccion: dict[tuple[str, int], tuple[cp_model.IntVar, list[tuple[int, int]]]] = {}
     coste = []
     fijas: list[Jornada] = []
+    reserva: list[tuple[str, int]] = []
 
     for p in perfiles:
         e = p.empleado
@@ -287,6 +288,12 @@ def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[
                 for k in range(max(0, _franja(inicio)), min(n, _franja(fin - 1) + 1)):
                     cubre[e.categoria][k].append(x)
             coste.append(abs(tramos[0][0] - habitual) // PASO * x)    # parecido a su horario de siempre
+        # Punto de partida para el optimizador (y plan de reserva): su horario habitual en un bloque.
+        if trabaja:
+            habitual_n = min(range(len(opciones)), key=lambda k: (len(opciones[k]), abs(opciones[k][0][0] - habitual)))
+            reserva.append((e.id, habitual_n))
+        for n_opcion, x in enumerate(variables):
+            modelo.AddHint(x, bool(trabaja) and n_opcion == habitual_n)
         if trabaja:
             modelo.AddExactlyOne(variables)
         else:
@@ -312,12 +319,12 @@ def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[
     solver.parameters.max_time_in_seconds = segundos
     solver.parameters.num_workers = 8
     estado = solver.Solve(modelo)
-    if estado not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        raise RuntimeError(f"Sin solución para el {dia} ({solver.StatusName(estado)}).")
     por_id = {p.empleado.id: p for p in perfiles}
-    jornadas = fijas + [Jornada(por_id[eid], dia, tramos)
-                        for (eid, _), (x, tramos) in eleccion.items() if solver.Value(x)]
-    return jornadas
+    if estado not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        # Sin tiempo para encontrar nada mejor: cada uno con su horario habitual.
+        return fijas + [Jornada(por_id[eid], dia, eleccion[(eid, n_op)][1]) for eid, n_op in reserva]
+    return fijas + [Jornada(por_id[eid], dia, tramos)
+                    for (eid, _), (x, tramos) in eleccion.items() if solver.Value(x)]
 
 
 def cobertura(jornadas: list[Jornada]) -> dict[str, list[int]]:
