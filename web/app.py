@@ -11,6 +11,8 @@ from pathlib import Path
 
 import streamlit as st
 
+from planer_handling.anual import rotaciones_recientes
+from planer_handling.anual_excel import exportar_anio
 from planer_handling.configuracion import Configuracion
 from planer_handling.desde_cuadrante import generar_parrilla_cuadrante
 from planer_handling.importar.ausencias import leer_ausencias
@@ -57,7 +59,38 @@ def leer_vuelos_mes(ruta: Path, dias: list[date]) -> dict:
 conf = configuracion()
 almacen = Almacen(RAIZ / "datos" / "registro")
 colores = motivos(conf)
-ausencias_tab, mensual_tab, diaria_tab = st.tabs(["Plantilla y ausencias", "Cuadrante del mes", "Parrilla del día"])
+ausencias_tab, anual_tab, mensual_tab, diaria_tab = st.tabs(
+    ["Plantilla y ausencias", "Rotaciones del año", "Cuadrante del mes", "Parrilla del día"])
+
+with anual_tab:
+    st.subheader("Calendario de rotaciones de un año")
+    st.write("Sube el último cuadrante (y, si lo tienes, el del mes anterior). El programa sigue el ciclo de "
+             "cada persona desde donde va, sin reiniciarlo en enero, y marca cada día de mañana, de tarde o libre.")
+    hoy_a = date.today()
+    anio_a, mes_a = elegir_mes("Mes del último cuadrante", hoy_a.replace(day=1), "an")
+    ultimo = st.file_uploader("Último cuadrante", type=["xlsx"], key="ua")
+    anterior = st.file_uploader("Cuadrante del mes anterior (opcional, da más seguridad)", type=["xlsx"], key="aa")
+    anio_obj = st.number_input("Año a calcular", 2020, 2100, hoy_a.year + 1, key="anio_obj")
+    if st.button("Calcular rotaciones", type="primary", disabled=not ultimo):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            try:
+                meses = []
+                if anterior:
+                    anio_p, mes_p = (anio_a, mes_a - 1) if mes_a > 1 else (anio_a - 1, 12)
+                    meses.append((leer_cuadrante(guardar(anterior, tmp), anio_p), dias_del_mes(anio_p, mes_p)))
+                meses.append((leer_cuadrante(guardar(ultimo, tmp), anio_a), dias_del_mes(anio_a, mes_a)))
+                rot = rotaciones_recientes(meses)
+                salida = tmp / f"rotaciones_{int(anio_obj)}.xlsx"
+                exportar_anio(rot, int(anio_obj), salida)
+                fijas = [r for r in rot if r.patron != "irregular"]
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Personas", len(rot))
+                c2.metric("Con rotación fija", len(fijas))
+                c3.metric("Sin rotación fija", len(rot) - len(fijas))
+                st.download_button("Descargar rotaciones", salida.read_bytes(), salida.name, type="primary")
+            except Exception as error:
+                st.error(f"No se ha podido calcular: {error}")
 
 with ausencias_tab:
     st.subheader("Bajas, vacaciones, sanciones y permisos")

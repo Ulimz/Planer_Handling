@@ -32,6 +32,7 @@ class FilaCuadrante:
     nombre: str
     fila: int
     jornadas: dict[date, Jornada] = field(default_factory=dict)
+    marcas_vacias: dict[date, str] = field(default_factory=dict)   # días sin horario pero con color (baja…)
 
 
 def _limpiar(valor) -> str:
@@ -83,8 +84,11 @@ def _leer_filas(hoja, fila_cab, col_nombre, col_funcion, dias) -> list[FilaCuadr
         for col, dia in dias.items():
             celda = hoja.cell(r, col)
             t = tramos(_limpiar(celda.value))
+            marca = celda.fill.fgColor.rgb if celda.fill is not None and celda.fill.fill_type else ""
+            marca = marca if isinstance(marca, str) and marca not in ("00000000", "FFFFFFFF") else ""
             if t:
-                marca = celda.fill.fgColor.rgb if celda.fill is not None and celda.fill.fill_type else ""
-                registro.jornadas[dia] = Jornada(t, marca if isinstance(marca, str) else "")
+                registro.jornadas[dia] = Jornada(t, marca)
+            elif marca:
+                registro.marcas_vacias[dia] = marca
         filas.append(registro)
     return filas

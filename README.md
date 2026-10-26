@@ -71,8 +71,9 @@ Pendiente: demanda de jardineras e hipódromo. Por ahora esas personas mantienen
 
 En Windows, doble clic en `arrancar_web.bat`.
 - La primera vez instala lo necesario. Hace falta tener Python instalado.
-- Después se abre el navegador con tres pestañas:
+- Después se abre el navegador con cuatro pestañas:
   - **Plantilla y ausencias**: apuntas bajas, vacaciones, sanciones y permisos, y das el alta cuando la persona vuelve. Se guardan en `datos/registro/` (fuera de Git). Desde aquí también se reorganiza un cuadrante ya publicado: el programa cambia el horario a las menos personas posibles para cubrir a quien falta y entrega la lista de cambios (hoja Cambios del Excel).
+  - **Rotaciones del año**: subes el último cuadrante (y, si quieres, el del mes anterior) y descargas el calendario del año que elijas, con cada día de mañana, de tarde o libre. La rotación continúa desde donde va cada persona; no se reinicia en enero.
   - **Cuadrante del mes**: subes los vuelos del mes, el cuadrante de referencia y, si quieres, las ausencias, y descargas el cuadrante. Las ausencias apuntadas se tienen en cuenta solas.
   - **Parrilla del día**: subes el cuadrante y los vuelos del día, y descargas la parrilla. Quien esté de baja o de vacaciones no entra en ningún equipo.
 - Todo se calcula en el propio ordenador y los archivos no se envían a ningún sitio.
