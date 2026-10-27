@@ -68,6 +68,9 @@ funciones:
   BHPCP:     {categoria: Hipodromo,        habilitaciones: [Hipodromo, Carretero, Operario]}
   RCO:       {categoria: Mando intermedio, habilitaciones: [Mando intermedio]}
   ARCO:      {categoria: Mando intermedio, habilitaciones: [Mando intermedio]}
+  # Terminal (pasaje). Solo se planifican si `pasaje` está activo.
+  AGP:       {categoria: Pasaje,             habilitaciones: [Facturación, Embarque, Oficina, Lost and found]}
+  RPA:       {categoria: Responsable pasaje, habilitaciones: [Responsable pasaje]}
 
 # Colores del cuadrante (RGB de la celda) -> motivo y si la persona está disponible ese día.
 marcas:
@@ -154,3 +157,15 @@ cambios_publicado:
   texto_especiales: "Complementarias especiales (art. 19)"
   texto_dia_libre: ", voluntarias en día libre"
   texto_completo_dia_libre: "Perentorias (art. 36)"
+
+# Pasaje (terminal): personas que pide cada vuelo y puestos fijos mientras dura la operación (desde
+# que abre la primera facturación hasta la última salida o una hora después de la última llegada).
+# En Azul/Ryanair no se planifica (activo: false); el perfil de la demo lo activa.
+pasaje:
+  activo: false
+  facturacion: {personas: 4, abre_antes_std: 150, cierra_antes_std: 40}   # por vuelo
+  embarque:    {personas: 2, desde_antes_std: 45, hasta_antes_std: 0}     # por puerta y vuelo
+  puestos_fijos: {Oficina: 2, Lost and found: 1}
+  responsables_a_la_vez: 1
+  antes_primera_facturacion: 15
+  despues_ultima_llegada: 60

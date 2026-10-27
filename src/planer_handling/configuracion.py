@@ -9,6 +9,16 @@ import yaml
 from .modelos import a_minutos
 
 
+def _mezclar(base: dict, cambios: dict) -> dict:
+    resultado = dict(base)
+    for clave, valor in cambios.items():
+        if isinstance(valor, dict) and isinstance(resultado.get(clave), dict):
+            resultado[clave] = _mezclar(resultado[clave], valor)
+        else:
+            resultado[clave] = valor
+    return resultado
+
+
 @dataclass
 class Turno:
     codigo: str
@@ -22,8 +32,15 @@ class Configuracion:
 
     @classmethod
     def cargar(cls, ruta: str | Path) -> "Configuracion":
+        """Con `hereda: otro.yaml` (relativo a este archivo) parte de esa configuración y solo cambia
+        lo que este archivo dice. Así cada empresa tiene su perfil sin copiar el de otra."""
+        ruta = Path(ruta)
         with open(ruta, encoding="utf-8") as f:
-            return cls(yaml.safe_load(f))
+            datos = yaml.safe_load(f) or {}
+        base = datos.pop("hereda", None)
+        if base:
+            datos = _mezclar(cls.cargar(ruta.parent / base).datos, datos)
+        return cls(datos)
 
     @property
     def zona_horaria(self) -> str:

@@ -1,0 +1,6 @@
+# Perfil de la demo: una operación vacacional con rampa y pasaje.
+# Parte de base.yaml y solo cambia lo que hay aquí.
+hereda: base.yaml
+
+pasaje:
+  activo: true

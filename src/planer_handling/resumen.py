@@ -7,7 +7,7 @@ from datetime import date
 
 from .configuracion import Configuracion
 from .importar.cuadrante import FilaCuadrante
-from .mensual import (PASO, PLANIFICADOS, DiaPlanificado, Jornada, aprender_perfiles, cobertura,
+from .mensual import (PASAJE, PASO, PLANIFICADOS, DiaPlanificado, Jornada, aprender_perfiles, cobertura,
                       demanda_del_dia, emparejar_giros)
 from .modelos import Vuelo
 
@@ -47,7 +47,7 @@ def resumir(filas: list[FilaCuadrante], vuelos_por_dia: dict[date, list[Vuelo]],
             tapa = min(falta_op, sobra_tl + sobra_pb)
             sustituye += tapa
             sin_cubrir += (max(0, demanda["TL"][k] - cub["TL"][k]) + max(0, demanda["PB/TOW"][k] - cub["PB/TOW"][k])
-                           + falta_op - tapa)
+                           + falta_op - tapa + sum(max(0, demanda[r][k] - cub[r][k]) for r in PASAJE))
         horas = sum(j.minutos for j in jornadas if j.perfil.empleado.categoria in PLANIFICADOS) / 60
         resultado.append(ResumenDia(dia, len(vuelos), len(jornadas), round(horas, 1), sin_cubrir * PASO / 60,
                                     sustituye * PASO / 60, DiaPlanificado(dia, len(vuelos), demanda, cub, jornadas)))

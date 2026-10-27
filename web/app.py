@@ -23,6 +23,7 @@ from planer_handling.importar.parrilla_real import leer_vuelos_parrilla
 from planer_handling.importar.vuelos import leer_vuelos
 from planer_handling.mensual import INICIO_MAS_TEMPRANO, aprender_perfiles, dias_del_mes, emparejar_giros, planificar_mes, reorganizar
 from planer_handling.mensual_excel import exportar_mes
+from planer_handling import pasaje
 from planer_handling.parrilla_excel import exportar
 from planer_handling.registro import Almacen, motivos
 from planer_handling.resumen import resumir
@@ -62,8 +63,8 @@ def archivo(etiqueta: str, tipos: list[str], clave: str, de_demo: str | None = N
 
 
 @st.cache_resource
-def configuracion() -> Configuracion:
-    return Configuracion.cargar(RAIZ / "config" / "base.yaml")
+def configuracion(nombre: str) -> Configuracion:
+    return Configuracion.cargar(RAIZ / "config" / nombre)
 
 
 def guardar(subido, carpeta: Path) -> Path:
@@ -86,7 +87,7 @@ def leer_vuelos_mes(ruta: Path, dias: list[date]) -> dict:
     return {d: v for d in dias if (v := emparejar_giros(leer_vuelos(ruta, d, conf.zona_horaria)[0]))}
 
 
-conf = configuracion()
+conf = configuracion("demo.yaml" if demo else "base.yaml")
 almacen = Almacen(RAIZ / "datos" / ("registro_demo" if demo else "registro"))
 if demo and not almacen.plantilla():
     almacen.guardar_plantilla(leer_cuadrante(DEMO / "cuadrante_octubre_2026.xlsx", 2026))
@@ -149,7 +150,9 @@ with resumen_tab:
 
         c1, c2 = st.columns([2, 1])
         dia_s = c1.select_slider("Día", [r.dia for r in resumen], format_func=lambda d: f"{d:%d/%m}", key="dia_s")
-        rol = c2.radio("Puesto", ["Operario", "TL", "PB/TOW"], horizontal=True, key="rol_s")
+        roles_s = ["Operario", "TL", "PB/TOW"] + [r for r in ("Pasaje", "Responsable pasaje")
+                                                  if any(any(x.plan.demanda[r]) for x in resumen)]
+        rol = c2.radio("Puesto", roles_s, horizontal=True, key="rol_s")
         plan = next(r for r in resumen if r.dia == dia_s).plan
         # Las franjas empiezan a las 04:00 y pueden pasar de medianoche: el eje va en horas desde las 00:00
         # de ese día (25 = la 01:00 del día siguiente).
@@ -407,6 +410,13 @@ with diaria_tab:
                                                           conf, incidencias, 20, almacen.ausencias())
                     salida = tmp / f"parrilla_{dia.isoformat()}.xlsx"
                     exportar(parrilla, salida, conf.equipo_plataforma, con_nombres_dia)
+                    tareas_p = pasaje.tareas_pasaje(vuelos, conf)
+                    if tareas_p:
+                        filas_dia = leer_cuadrante(ruta_cuadrante, dia.year)
+                        fuera = {a.empleado for a in almacen.ausencias() if a.desde <= dia <= a.hasta}
+                        pasaje.asignar(tareas_p, pasaje.agentes_del_dia(filas_dia, dia, conf, "Pasaje", fuera))
+                        pasaje.anadir_hoja(salida, tareas_p,
+                                           pasaje.agentes_del_dia(filas_dia, dia, conf, "Responsable pasaje", fuera))
                 grupos = [e for e in parrilla.reparto.equipos if e.seccion == "GRUPOS"]
                 sin_equipo = sum(1 for t in parrilla.tareas if t.id not in parrilla.asignadas)
                 c1, c2, c3, c4 = st.columns(4)
@@ -414,6 +424,13 @@ with diaria_tab:
                 c2.metric("Equipos", len(grupos))
                 c3.metric("De refuerzo", len(parrilla.reparto.equipos) - len(grupos))
                 c4.metric("Sin equipo", sin_equipo)
+                if tareas_p:
+                    c1, c2, c3, c4 = st.columns(4)
+                    c1.metric("Facturaciones", sum(1 for t in tareas_p if t.puesto == "Facturación"))
+                    c2.metric("Embarques", sum(1 for t in tareas_p if t.puesto == "Embarque"))
+                    c3.metric("Agentes de pasaje", len({a for t in tareas_p for a in t.agentes}))
+                    c4.metric("Horas de pasaje sin cubrir", round(sum(t.sin_cubrir for t in tareas_p) / 60, 1))
+                    st.caption("El reparto de pasaje (facturación, embarque y puestos fijos) va en la hoja Pasaje.")
                 st.download_button("Descargar parrilla", salida.read_bytes(), salida.name, type="primary")
                 pendientes = [i for i in parrilla.incidencias if i.gravedad == "PENDIENTE"]
                 if pendientes:

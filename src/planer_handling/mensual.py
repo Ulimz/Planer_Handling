@@ -46,7 +46,11 @@ ROTACIONES = {"6x3": (6, 3), "4x4": (4, 4)}
 AJUSTE_MINIMO_ROTACION = 0.9
 # Por equipo de plataforma: 1 TL, 1 PB/TOW y 3 operarios (carretero, cintero y cuarto operario).
 PERSONAS_POR_EQUIPO = {"TL": 1, "PB/TOW": 1, "Operario": 3}
-PLANIFICADOS = set(PERSONAS_POR_EQUIPO)
+# Terminal (si la configuración tiene `pasaje` activo): agentes de pasaje (facturación, embarque,
+# oficina, lost and found) y responsables de pasaje.
+PASAJE = ("Pasaje", "Responsable pasaje")
+PLANIFICADOS = set(PERSONAS_POR_EQUIPO) | set(PASAJE)
+COSTE_FALTA = {"TL": 3000, "PB/TOW": 3000, "Operario": 1000, "Pasaje": 1000, "Responsable pasaje": 3000}
 
 
 @dataclass
@@ -249,7 +253,41 @@ def demanda_del_dia(vuelos: list[Vuelo], conf: Configuracion) -> dict[str, list[
     for t in tareas:
         for k in range(max(0, _franja(t.inicio)), min(len(equipos), _franja(t.fin + transito - 1) + 1)):
             equipos[k] += 1
-    return {rol: [n * e for e in equipos] for rol, n in PERSONAS_POR_EQUIPO.items()}
+    resultado = {rol: [n * e for e in equipos] for rol, n in PERSONAS_POR_EQUIPO.items()}
+    resultado.update(demanda_pasaje(vuelos, conf))
+    return resultado
+
+
+def demanda_pasaje(vuelos: list[Vuelo], conf: Configuracion) -> dict[str, list[int]]:
+    """Personas de pasaje en cada franja: facturación y embarque de cada salida, y los puestos fijos
+    (oficina, lost and found…) y responsables mientras dura la operación. Las cifras salen de
+    `pasaje` en la configuración."""
+    n = franjas_del_dia()
+    resultado = {rol: [0] * n for rol in PASAJE}
+    regla = conf.datos.get("pasaje", {})
+    if not regla.get("activo") or not vuelos:
+        return resultado
+
+    def sumar(rol: str, desde: int, hasta: int, personas: int) -> None:
+        for k in range(max(0, _franja(desde)), min(n, _franja(hasta - 1) + 1)):
+            resultado[rol][k] += personas
+
+    fac, emb = regla.get("facturacion", {}), regla.get("embarque", {})
+    momentos = []
+    for v in vuelos:
+        if v.std is not None:
+            sumar("Pasaje", v.std - fac.get("abre_antes_std", 150), v.std - fac.get("cierra_antes_std", 40),
+                  fac.get("personas", 0))
+            sumar("Pasaje", v.std - emb.get("desde_antes_std", 45), v.std - emb.get("hasta_antes_std", 0),
+                  emb.get("personas", 0))
+            momentos += [v.std - fac.get("abre_antes_std", 150), v.std]
+        if v.sta is not None:
+            momentos.append(v.sta + regla.get("despues_ultima_llegada", 60))
+    inicio, fin = min(momentos) - regla.get("antes_primera_facturacion", 15), max(momentos)
+    for puesto, personas in regla.get("puestos_fijos", {}).items():
+        sumar("Pasaje", inicio, fin, personas)
+    sumar("Responsable pasaje", inicio, fin, regla.get("responsables_a_la_vez", 0))
+    return resultado
 
 
 # --- 3. Horarios del día --------------------------------------------------------------------
@@ -392,8 +430,10 @@ def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[
         modelo.Add(op + extra_tl + extra_pb + faltas["Operario"] >= demanda_dia["Operario"][k])
         modelo.Add(extra_tl <= tl)
         modelo.Add(extra_pb <= pb)
-        deficit += [3000 * faltas["TL"], 3000 * faltas["PB/TOW"], 1000 * faltas["Operario"],
-                    coste_tl_pb_operario * (extra_tl + extra_pb)]
+        for r in PASAJE:
+            modelo.Add(sum(cubre[r][k]) + faltas[r] >= demanda_dia[r][k])
+        deficit += [COSTE_FALTA[r] * faltas[r] for r in PLANIFICADOS]
+        deficit.append(coste_tl_pb_operario * (extra_tl + extra_pb))
         # Pista completa (también de estas variables): el optimizador parte del plan de reserva (el
         # horario publicado o el habitual) y siempre tiene una solución aunque se le acabe el tiempo.
         r_tl, r_pb, r_op = (cubre_reserva[r][k] for r in ("TL", "PB/TOW", "Operario"))
@@ -403,11 +443,12 @@ def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[
         usa_pb = min(sobra_pb, hace_falta - usa_tl)
         falta = {"TL": max(0, demanda_dia["TL"][k] - r_tl), "PB/TOW": max(0, demanda_dia["PB/TOW"][k] - r_pb),
                  "Operario": hace_falta - usa_tl - usa_pb}
+        falta.update({r: max(0, demanda_dia[r][k] - cubre_reserva[r][k]) for r in PASAJE})
         modelo.AddHint(extra_tl, usa_tl)
         modelo.AddHint(extra_pb, usa_pb)
         for r in PLANIFICADOS:
             modelo.AddHint(faltas[r], falta[r])
-        coste_reserva += (3000 * (falta["TL"] + falta["PB/TOW"]) + 1000 * falta["Operario"]
+        coste_reserva += (sum(COSTE_FALTA[r] * falta[r] for r in PLANIFICADOS)
                           + coste_tl_pb_operario * (usa_tl + usa_pb))
     modelo.Minimize(sum(deficit) + sum(coste))
 
@@ -435,6 +476,8 @@ def _recortar(jornadas: list[Jornada], demanda_dia: dict[str, list[int]], contar
     n = franjas_del_dia()
 
     def puede_quitar(rol: str, k: int) -> bool:
+        if rol in PASAJE:
+            return cob[rol][k] - 1 >= demanda_dia[rol][k]
         tl, pb, op = (cob[r][k] - (r == rol) for r in ("TL", "PB/TOW", "Operario"))
         dtl, dpb, dop = (demanda_dia[r][k] for r in ("TL", "PB/TOW", "Operario"))
         if not contar_tl_pb and rol == "Operario" and op < dop:

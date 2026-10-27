@@ -9,7 +9,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-from .mensual import INICIO_MAS_TEMPRANO, PASO, Cambio, CuadranteMes, texto_jornada
+from .mensual import INICIO_MAS_TEMPRANO, PASAJE, PASO, Cambio, CuadranteMes, texto_jornada
 from .modelos import hhmm
 
 DIAS_SEMANA = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"]
@@ -66,13 +66,19 @@ def _hoja_cuadrante(ws, cm: CuadranteMes, con_nombres: bool, colores: dict[str, 
     ws.freeze_panes = "D2"
 
 
+def _roles(cm: CuadranteMes) -> list[str]:
+    """Los de rampa siempre; los de pasaje si algún día los piden los vuelos."""
+    return ["TL", "PB/TOW", "Operario"] + [r for r in PASAJE if any(any(dp.demanda[r]) for dp in cm.dias)]
+
+
 def _hoja_cobertura(ws, cm: CuadranteMes) -> None:
-    ws.append(["Día", "Vuelos", "Pico de equipos", "Personas", "Horas planificadas",
-               "Horas sin cubrir TL", "Horas sin cubrir PB/TOW", "Horas sin cubrir operarios"])
+    roles = _roles(cm)
+    ws.append(["Día", "Vuelos", "Pico de equipos", "Personas", "Horas planificadas"]
+              + [f"Horas sin cubrir {r}" for r in roles])
     for dp in cm.dias:
         fila = [dp.dia, dp.vuelos, max(dp.demanda["TL"]), len(dp.jornadas),
                 round(sum(j.minutos for j in dp.jornadas) / 60, 1)]
-        fila += [round(dp.deficit(r) / 60, 1) for r in ("TL", "PB/TOW", "Operario")]
+        fila += [round(dp.deficit(r) / 60, 1) for r in roles]
         ws.append(fila)
         if any(v > 0 for v in fila[5:]):
             for celda in ws[ws.max_row][5:]:
@@ -119,7 +125,7 @@ def _hoja_curva(ws, cm: CuadranteMes) -> None:
     """Demanda frente a cobertura cada 15 minutos, para hacer gráficos."""
     ws.append(["Día", "Hora", "Rol", "Necesarios", "Planificados"])
     for dp in cm.dias:
-        for rol in ("TL", "PB/TOW", "Operario"):
+        for rol in _roles(cm):
             for k, (d, c) in enumerate(zip(dp.demanda[rol], dp.cobertura[rol])):
                 if d or c:
                     ws.append([dp.dia, hhmm(INICIO_MAS_TEMPRANO + k * PASO), rol, d, c])

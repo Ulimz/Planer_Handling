@@ -32,10 +32,12 @@ AEROPUERTOS = ["MAN", "LBA", "BHX", "EMA", "STN", "GLA", "EDI", "BFS", "NCL", "B
 # Giros por día de la semana (lunes a domingo): una vacacional concentra el tráfico en unos días.
 GIROS_POR_DIA = [26, 20, 24, 32, 28, 36, 34]
 
-# Función del cuadrante -> (personas, proporción de tiempo completo). Unas 130 personas.
+# Función del cuadrante -> (personas, proporción de tiempo completo). Unas 260 personas entre rampa y pasaje.
 PLANTILLA = {"TL": (27, 0.5), "TOW/JAR": (13, 0.45), "PB*/JAR": (10, 0.45), "PB": (4, 0.5),
-             "PCP": (56, 0.3), "GHA": (6, 0.3), "JAR": (8, 0.4)}
+             "PCP": (56, 0.3), "GHA": (6, 0.3), "JAR": (8, 0.4),
+             "AGP": (125, 0.3)}           # agentes de pasaje: facturación, embarque, oficina, lost and found
 MANDOS = {"RCO": 4, "ARCO": 4}
+RESPONSABLES_PASAJE = 3      # 6x3 con un responsable por grupo: siempre hay uno de mañana y uno de tarde
 VACACIONES = "FFFFFF00"
 BAJA = "FF7030A0"
 
@@ -80,6 +82,9 @@ def personas(rnd: random.Random) -> list[dict]:
                 tarde = [(t := rnd.choice(range(840, 1141, 15)), min(t + horas, 1440))]
             resultado.append({"funcion": funcion, "contrato": contrato, "grupo": i % 3,
                               "manana": manana, "tarde": tarde})
+    for i in range(RESPONSABLES_PASAJE):
+        resultado.append({"funcion": "RPA", "contrato": "TCC", "grupo": i % 3,
+                          "manana": [(270, 810)], "tarde": [(810, 1350)]})     # 9 h con concreción horaria
     for funcion, n in MANDOS.items():
         for i in range(n):
             resultado.append({"funcion": funcion, "contrato": "TC", "grupo": i % 4, "mando": True,
