@@ -7,6 +7,8 @@
   horas Zulu). Inventada (vuelos XX), con la forma de una aerolínea vacacional británica: solo giros
   desde Reino Unido, sin aviones en base, y mucho más tráfico unos días que otros.
 Sin nombres de personas: cada empleado es un código (EMP001…).
+- demo/solicitudes_vacaciones_2027.xlsx: puntos acumulados, antigüedad y quincenas pedidas por
+  orden de preferencia para repartir las vacaciones de 2027 (casi todos piden verano).
 - demo/cuadrante_a_mano_noviembre_2026.xlsx: noviembre sin el programa (rotación con el horario de
   siempre), para compararlo con el que sale del programa.
 
@@ -176,6 +178,27 @@ def escribir_vuelos(dias: list[date], ruta: Path, rnd: random.Random) -> None:
     wb.save(ruta)
 
 
+def escribir_solicitudes(gente: list[dict], ruta: Path, rnd: random.Random) -> None:
+    quincenas = [f"{m}-{q}" for m in ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT",
+                                      "NOV", "DIC"] for q in (1, 2)]
+    # Lo que más se pide: verano, Navidad y Semana Santa.
+    peso = {q: 1 for q in quincenas} | {"JUL-1": 9, "JUL-2": 10, "AGO-1": 12, "AGO-2": 10, "JUN-2": 5,
+                                         "SEP-1": 5, "DIC-2": 6, "MAR-2": 4}
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Solicitudes"
+    ws.append(["Empleado", "Función", "Puntos", "Antigüedad"] + [f"Preferencia {i}" for i in range(1, 5)])
+    for p in gente:
+        pedidas: list[str] = []
+        while len(pedidas) < 4:
+            q = rnd.choices(quincenas, [peso[q] for q in quincenas])[0]
+            if q not in pedidas:
+                pedidas.append(q)
+        alta = date(rnd.randint(2004, 2025), rnd.randint(1, 12), rnd.randint(1, 28))
+        ws.append([p["nombre"], p["funcion"], rnd.choice(range(0, 61, 2)), alta.strftime("%d/%m/%Y")] + pedidas)
+    wb.save(ruta)
+
+
 def main() -> None:
     rnd = random.Random(SEMILLA)
     CARPETA.mkdir(exist_ok=True)
@@ -185,6 +208,7 @@ def main() -> None:
     escribir_vuelos(dias_del_mes(*PLANIFICADO), CARPETA / "vuelos_noviembre_2026.xlsx", rnd)
     # Para comparar: noviembre "a mano", siguiendo la rotación con el horario de siempre de cada uno.
     escribir_cuadrante(gente, dias_del_mes(*PLANIFICADO), CARPETA / "cuadrante_a_mano_noviembre_2026.xlsx", rnd)
+    escribir_solicitudes(gente, CARPETA / "solicitudes_vacaciones_2027.xlsx", rnd)
     print(f"{len(gente)} personas en {CARPETA}")
 
 

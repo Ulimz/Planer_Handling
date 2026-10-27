@@ -169,3 +169,18 @@ pasaje:
   responsables_a_la_vez: 1
   antes_primera_facturacion: 15
   despues_ultima_llegada: 60
+
+# Vacaciones del año siguiente por puntos (pestaña Vacaciones del año). Los valores son un ejemplo:
+# cada empresa pone sus temporadas, puntos y cupos.
+#  - periodos_por_persona: quincenas que se lleva cada uno (2 quincenas = unos 30 días naturales).
+#  - Elige primero quien menos puntos lleva; cada quincena suma los puntos de su temporada.
+#  - cupo: parte de cada función que puede estar de vacaciones a la vez en esa quincena.
+vacaciones:
+  periodos_por_persona: 2
+  puntos_por_defecto: 2
+  cupo_por_defecto: 0.12
+  temporadas:
+    - {nombre: Verano alto, periodos: [JUL-1, JUL-2, AGO-1, AGO-2], puntos: 10, cupo: 0.06}
+    - {nombre: Verano bajo, periodos: [JUN-2, SEP-1], puntos: 6, cupo: 0.08}
+    - {nombre: Navidad, periodos: [DIC-2], puntos: 8, cupo: 0.08}
+    - {nombre: Semana Santa, periodos: [MAR-2], puntos: 8, cupo: 0.08}

@@ -27,6 +27,8 @@ from planer_handling import pasaje
 from planer_handling.parrilla_excel import exportar
 from planer_handling.registro import Almacen, motivos
 from planer_handling.resumen import resumir
+from planer_handling import vacaciones
+from planer_handling.vacaciones_excel import exportar_vacaciones
 
 RAIZ = Path(__file__).resolve().parent.parent
 DEMO = RAIZ / "ejemplos" / "demo"
@@ -93,8 +95,56 @@ if demo and not almacen.plantilla():
     almacen.guardar_plantilla(leer_cuadrante(DEMO / "cuadrante_octubre_2026.xlsx", 2026))
 colores = motivos(conf)
 OCTUBRE_DEMO, NOVIEMBRE_DEMO = date(2026, 10, 1), date(2026, 11, 1)
-resumen_tab, ausencias_tab, anual_tab, mensual_tab, diaria_tab = st.tabs(
-    ["Resumen", "Plantilla y ausencias", "Rotaciones del año", "Cuadrante del mes", "Parrilla del día"])
+resumen_tab, ausencias_tab, anual_tab, vacaciones_tab, mensual_tab, diaria_tab = st.tabs(
+    ["Resumen", "Plantilla y ausencias", "Rotaciones del año", "Vacaciones del año", "Cuadrante del mes",
+     "Parrilla del día"])
+
+with vacaciones_tab:
+    st.subheader("Reparto de las vacaciones del año por puntos")
+    st.write("Sube las solicitudes: Empleado, Función, Puntos acumulados, Antigüedad y las quincenas que pide "
+             "cada uno por orden de preferencia (JUL-1, AGO-2…). Elige primero quien menos puntos lleva; cada "
+             "quincena suma los puntos de su temporada para el año siguiente, y en cada quincena solo puede "
+             "estar de vacaciones un cupo de cada función.")
+    anio_v = st.number_input("Año de las vacaciones", 2020, 2100, 2027 if demo else date.today().year + 1,
+                             key="anio_v_demo" if demo else "anio_v")
+    solicitudes_v = archivo("Solicitudes de vacaciones", ["xlsx", "csv"], "sv", "solicitudes_vacaciones_2027.xlsx")
+    temporadas = conf.datos.get("vacaciones", {}).get("temporadas", [])
+    if temporadas:
+        st.caption("Temporadas (de la configuración): " + "; ".join(
+            f"{t['nombre']} ({', '.join(t['periodos'])}): {t['puntos']} puntos" for t in temporadas)
+                   + f"; resto: {conf.datos['vacaciones'].get('puntos_por_defecto', 1)} puntos.")
+    if st.button("Repartir vacaciones", type="primary", disabled=not solicitudes_v):
+        with tempfile.TemporaryDirectory() as tmp:
+            try:
+                sol = vacaciones.leer_solicitudes(guardar(solicitudes_v, Path(tmp)))
+                usado = vacaciones.repartir(sol, int(anio_v), conf)
+                periodos = vacaciones.quincenas(int(anio_v))
+                salida = Path(tmp) / f"vacaciones_{int(anio_v)}.xlsx"
+                exportar_vacaciones(sol, int(anio_v), usado, vacaciones.cupos(sol, periodos, conf),
+                                    vacaciones.valor_periodos(periodos, conf), salida)
+                st.session_state["vacaciones"] = (int(anio_v), sol, salida.read_bytes())
+            except Exception as error:
+                st.error(f"No se ha podido repartir: {error}")
+    if st.session_state.get("vacaciones"):
+        anio_hecho, sol, excel = st.session_state["vacaciones"]
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Personas", len(sol))
+        c2.metric("Con todo lo que pidieron", sum(1 for x in sol if x.asignados and x.conseguidas == len(x.asignados)))
+        c3.metric("Con parte", sum(1 for x in sol if 0 < x.conseguidas < len(x.asignados)))
+        c4.metric("Con nada de lo pedido", sum(1 for x in sol if x.conseguidas == 0))
+        st.download_button("Descargar reparto", excel, f"vacaciones_{anio_hecho}.xlsx", type="primary")
+        st.caption("El Excel trae la asignación con los puntos de antes y de después, el calendario y los cupos "
+                   "de cada quincena.")
+        if st.button("Apuntar estas vacaciones en Plantilla y ausencias"):
+            apuntadas = repetidas = 0
+            for empleado, funcion, desde, hasta in vacaciones.como_ausencias(sol, anio_hecho):
+                try:
+                    almacen.anadir(empleado, funcion, "Vacaciones", desde, hasta, f"Reparto {anio_hecho}")
+                    apuntadas += 1
+                except ValueError:
+                    repetidas += 1
+            st.success(f"Apuntadas {apuntadas} quincenas de vacaciones."
+                       + (f" {repetidas} no, porque ya había algo apuntado esos días." if repetidas else ""))
 
 with resumen_tab:
     st.subheader("¿Cubre el cuadrante los vuelos?")

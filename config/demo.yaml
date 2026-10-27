@@ -4,3 +4,7 @@ hereda: base.yaml
 
 pasaje:
   activo: true
+
+# Vacaciones: V Convenio del sector de handling (art. 38): 30 días naturales y una programación
+# anual orientativa antes del 15 de diciembre del año anterior. El reparto por puntos y los cupos
+# son de cada empresa; aquí los de base.yaml como ejemplo.
