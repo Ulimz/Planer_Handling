@@ -26,6 +26,14 @@ python scripts/generar_plantilla_ficticia.py --escala 2
 planer --fecha 2027-07-15 --vuelos ejemplos/vuelos_ficticios.xlsx --plantilla ejemplos/plantilla_ficticia.xlsx
 ```
 
+Con el horario real de cada persona (cuadrante mensual) y los vuelos de una parrilla diaria ya hecha:
+
+```bash
+planer --fecha 2025-02-06 --cuadrante datos/Turnos_Febrero.xlsx --vuelos datos/parrillas.xlsx --hoja 29-10
+```
+
+En este modo cada TL disponible abre un equipo con su horario, el resto de puestos se cubre con quien más coincide con él (los turnos partidos cuentan como dos tramos) y las funciones del cuadrante (TL, PB*/JAR, PCP…) se traducen a puestos con la tabla `funciones` de `config/base.yaml`. Por defecto la parrilla muestra solo códigos de empleado; `--con-nombres` añade los nombres.
+
 La parrilla se guarda en `salida/parrilla_AAAA-MM-DD.xlsx`. Los tiempos de servicio, turnos y rotaciones se ajustan en `config/base.yaml`.
 
 ## Datos
@@ -35,7 +43,43 @@ La parrilla se guarda en `salida/parrilla_AAAA-MM-DD.xlsx`. Los tiempos de servi
 
 ## Pendiente
 
-- Leer el cuadrante mensual y la hoja de grupos con el formato de PARRITRON y comparar con la parrilla real.
+- Confirmar el significado de las funciones PCP, GHA, BH* y PB* y de los colores del cuadrante.
+- Rotaciones reales en el modo plantilla: 6x3 = 3 mañanas + 3 tardes + 3 libres; 4x4 = 2 + 2 + 4.
+- Comparar grupo a grupo con la parrilla real usando cuadrante y vuelos del mismo periodo.
 - Estándares por tipo de avión y compañía, y tiempos de desplazamiento entre puestos.
 - Reglas de convenio (descansos, horas anuales, festivos) y planificación mensual y anual.
 - Interfaz web para planificadores y RAMPCOs.
+
+## Cuadrante mensual a partir de los vuelos del mes
+
+```bash
+planer-mes --mes 2026-11 --vuelos Flights-noviembre.xlsx \
+           --referencia cuadrante_octubre.xlsx --mes-referencia 2026-10
+```
+
+- Del cuadrante de referencia aprende, para cada persona: función, rotación (6x3, 4x4 o irregular), qué días de su ciclo son de mañana o de tarde y cuántas horas hace al día.
+- La rotación continúa en el mes nuevo sin reiniciarse.
+- Cada día calcula cuántos equipos hacen falta cada 15 minutos y elige la hora de entrada de cada persona para cubrirlo, con 12 horas de descanso entre jornadas.
+- A las personas irregulares solo las llama si hacen falta, sin pasar de los días que hicieron en el mes de referencia.
+- Quien hacía turnos partidos puede recibir un partido: sus dos tramos habituales con una pausa de 1 a 5 horas.
+- Con `--contratos contratos.xlsx` (columnas EMPLEADO, CONTRATO) aplica las reglas de `contratos` de la configuración: los TC mantienen sus 8 horas, a los de concreción horaria no se les mueve la hora y a los parciales se les recortan las horas que sobran según los vuelos, sin bajar del mínimo `jornada_minima_respecto_referencia`.
+- Con `--ausencias listado.xlsx` (columnas EMPLEADO, DESDE, HASTA, MOTIVO) deja fuera a quien está de vacaciones, baja o permiso. Esos días salen con el motivo y el color de la empresa.
+- El Excel de salida tiene el formato del cuadrante de la empresa, así que se puede pasar después a `planer --cuadrante`. Incluye las hojas Cobertura, Horas y Curva.
+
+Pendiente: demanda de jardineras e hipódromo. Por ahora esas personas mantienen su horario habitual.
+
+## Web sencilla (en tu ordenador)
+
+En Windows, doble clic en `arrancar_web.bat`.
+- La primera vez instala lo necesario. Hace falta tener Python instalado.
+- Después se abre el navegador con seis pestañas:
+  - **Resumen**: subes un cuadrante y los vuelos del mes y ves, cada 15 minutos, cuánta gente hay frente a la que piden los vuelos. Si subes otro cuadrante del mismo mes (por ejemplo el hecho a mano), compara horas y huecos.
+  - **Plantilla y ausencias**: apuntas bajas, vacaciones, sanciones y permisos, y das el alta cuando la persona vuelve. Se guardan en `datos/registro/` (fuera de Git). Desde aquí también se reorganiza un cuadrante ya publicado: el programa cambia el horario a las menos personas posibles para cubrir a quien falta y entrega la lista de cambios (hoja Cambios del Excel).
+  - **Rotaciones del año**: subes el último cuadrante (y, si quieres, el del mes anterior) y descargas el calendario del año que elijas, con cada día de mañana, de tarde o libre. La rotación continúa desde donde va cada persona; no se reinicia en enero.
+  - **Vacaciones del año**: subes las solicitudes (Empleado, Función, Puntos, Antigüedad y las quincenas por orden de preferencia) y el programa reparte las vacaciones del año siguiente por puntos: elige primero quien menos puntos lleva, cada quincena suma los puntos de su temporada y en cada quincena solo puede estar fuera un cupo de cada función. Temporadas, puntos y cupos están en `vacaciones` de la configuración. El reparto se puede apuntar de golpe como ausencias.
+  - **Cuadrante del mes**: subes los vuelos del mes, el cuadrante de referencia y, si quieres, las ausencias, y descargas el cuadrante. Las ausencias apuntadas se tienen en cuenta solas.
+  - **Parrilla del día**: subes el cuadrante y los vuelos del día, y descargas la parrilla. Quien esté de baja o de vacaciones no entra en ningún equipo. Si la configuración tiene `pasaje` activo, la parrilla trae también la hoja Pasaje: facturación y puertas de embarque de cada vuelo, oficina, lost and found y los responsables de pasaje.
+- Todo se calcula en el propio ordenador y los archivos no se envían a ningún sitio.
+- **Demo**: el interruptor "Demo con una empresa ficticia" de la barra lateral carga una empresa inventada (`ejemplos/demo/`, se rehace con `python ejemplos/generar_demo.py`): 260 personas (rampa y pasaje), contratos, cuadrante de octubre, vuelos de noviembre con la forma de una operación vacacional desde Reino Unido, y el noviembre que sale del programa y uno "a mano" para compararlos, y las solicitudes de vacaciones de 2027. Usa `config/demo.yaml`, que hereda de `base.yaml` y activa pasaje. Las ausencias de la demo se guardan aparte, en `datos/registro_demo/`.
+
+En Linux o Mac: `pip install -e .[web]` y después `streamlit run web/app.py`.

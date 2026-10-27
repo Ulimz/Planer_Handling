@@ -1,0 +1,109 @@
+from datetime import date
+
+from planer_handling import mensual
+from planer_handling.importar.cuadrante import FilaCuadrante, Jornada
+from planer_handling.modelos import Vuelo
+
+OCTUBRE = mensual.dias_del_mes(2026, 10)
+
+
+def _fila(funcion, nombre, desfase, manana=(300, 780), tarde=(900, 1380)):
+    """Persona 6x3 (MMMTTT + 3 libres) que empieza el ciclo `desfase` días antes del 1 de octubre."""
+    fila = FilaCuadrante(funcion, nombre, 0)
+    for i, dia in enumerate(OCTUBRE):
+        pos = (i + desfase) % 9
+        if pos < 6:
+            fila.jornadas[dia] = Jornada([manana if pos < 3 else tarde])
+    return fila
+
+
+def test_aprende_rotacion_fases_y_horas(conf):
+    perfiles = mensual.aprender_perfiles([_fila("TL", "UNO", 2)], OCTUBRE, conf)
+    p = perfiles[0]
+    assert (p.patron, p.desfase) == ("6x3", 2)
+    assert [p.fases[k] for k in range(6)] == ["M", "M", "M", "T", "T", "T"]
+    assert p.duracion == 480 and p.inicio_habitual["M"] == 300
+    # La rotación continúa en noviembre sin reiniciarse.
+    assert [p.trabaja(date(2026, 11, d), OCTUBRE[0]) for d in (1, 2, 3, 4)] == [False, False, False, True]
+
+
+def test_empareja_llegada_y_salida_sueltas_en_un_giro():
+    dia = date(2026, 11, 3)
+    vuelos = [Vuelo(dia, vuelo_in="XX1", origen="EIN", sta=600),
+              Vuelo(dia, vuelo_out="XX2", destino="DUB", std=650),
+              Vuelo(dia, vuelo_out="XX3", destino="STN", std=360)]
+    resultado = mensual.emparejar_giros(vuelos)
+    assert [(v.codigo, v.sta, v.std) for v in resultado] == [("XX3", None, 360), ("XX1/XX2", 600, 650)]
+
+
+def test_planifica_horarios_que_cubren_los_vuelos(conf):
+    filas = [_fila("TL", "TL1", 0), _fila("PB", "PB1", 0)] + [_fila("PCP", f"OP{i}", 0) for i in range(3)]
+    perfiles = mensual.aprender_perfiles(filas, OCTUBRE, conf)
+    dia = date(2026, 11, 6)                              # primera mañana del ciclo
+    vuelos = {dia: [Vuelo(dia, vuelo_in="XX1", origen="STN", sta=8 * 60, vuelo_out="XX2", destino="STN", std=8 * 60 + 30)]}
+    cm = mensual.planificar_mes(vuelos, perfiles, OCTUBRE[0], conf, segundos_por_dia=5)
+    dp = cm.dias[0]
+    assert len(dp.jornadas) == 5
+    assert all(j.inicio < 12 * 60 for j in dp.jornadas)   # le toca mañana a todos
+    assert all(dp.deficit(r) == 0 for r in ("TL", "PB/TOW", "Operario"))
+
+
+def test_partidos_y_ausencias(conf, tmp_path):
+    import pandas as pd
+    from planer_handling.importar.ausencias import leer_ausencias
+    partida = _fila("PCP", "PARTIDO", 0)
+    for jornada in partida.jornadas.values():
+        jornada.tramos = [(300, 420), (600, 720)]           # 05:00-07:00 y 10:00-12:00
+    filas = [_fila("TL", "TL1", 0), _fila("PB", "PB1", 0), partida, _fila("PCP", "VACACIONES", 0)]
+    perfiles = mensual.aprender_perfiles(filas, OCTUBRE, conf)
+    assert perfiles[2].partido == (120, 180, 120)
+    ruta = tmp_path / "ausencias.xlsx"
+    pd.DataFrame({"Empleado": ["VACACIONES"], "Desde": ["01/11/2026"], "Hasta": ["15/11/2026"],
+                  "Motivo": ["Vacaciones"]}).to_excel(ruta, index=False)
+    dia = date(2026, 11, 6)
+    # Dos giros separados: a las 06:00 y a las 11:00. Un partido los cubre mejor que un bloque.
+    vuelos = {dia: [Vuelo(dia, vuelo_in="XX1", origen="STN", sta=6 * 60, vuelo_out="XX2", destino="STN", std=6 * 60 + 30),
+                    Vuelo(dia, vuelo_in="XX3", origen="DUB", sta=11 * 60, vuelo_out="XX4", destino="DUB", std=11 * 60 + 30)]}
+    cm = mensual.planificar_mes(vuelos, perfiles, OCTUBRE[0], conf, 5, leer_ausencias(ruta))
+    dp = cm.dias[0]
+    assert dp.ausentes == {perfiles[3].empleado.id: "Vacaciones"}
+    assert {j.perfil.empleado.nombre for j in dp.jornadas} == {"TL1", "PB1", "PARTIDO"}
+    assert len(next(j for j in dp.jornadas if j.perfil.empleado.nombre == "PARTIDO").tramos) == 2
+    assert mensual.texto_jornada([(300, 420), (600, 720)]) == "05:00\n07:00\n\n10:00\n12:00"
+
+
+def test_contratos_parcial_se_recorta_y_completo_no(conf):
+    # Mucha gente de mañana para un solo giro: al parcial se le recorta la jornada, al TC no.
+    filas = [_fila("TL", "TL1", 0), _fila("PB", "PB1", 0), _fila("PCP", "COMPLETO", 0),
+             _fila("PCP", "PARCIAL", 0, manana=(300, 660)), _fila("PCP", "FIJO", 0, manana=(360, 600))]
+    contratos = {"COMPLETO": "TC", "PARCIAL": "TP", "FIJO": "TCC"}
+    perfiles = mensual.aprender_perfiles(filas, OCTUBRE, conf, contratos)
+    por_nombre = {p.empleado.nombre: p for p in perfiles}
+    assert por_nombre["COMPLETO"].duracion == 480 and not por_nombre["COMPLETO"].duraciones
+    assert por_nombre["PARCIAL"].duraciones and por_nombre["FIJO"].horario_fijo
+    dia = date(2026, 11, 6)
+    vuelos = {dia: [Vuelo(dia, vuelo_in="XX1", origen="STN", sta=8 * 60, vuelo_out="XX2", destino="STN", std=8 * 60 + 30)]}
+    cm = mensual.planificar_mes(vuelos, perfiles, OCTUBRE[0], conf, segundos_por_dia=5)
+    jornadas = {j.perfil.empleado.nombre: j for j in cm.dias[0].jornadas}
+    assert jornadas["COMPLETO"].minutos == 480
+    assert jornadas["FIJO"].tramos == [(360, 600)]
+    assert jornadas["PARCIAL"].minutos < 360 and jornadas["PARCIAL"].minutos >= por_nombre["PARCIAL"].jornada_minima
+    assert all(d == 0 for r in ("TL", "PB/TOW", "Operario") for d in [cm.dias[0].deficit(r)])
+
+
+def test_tl_que_sobra_queda_de_refuerzo_si_tiene_coste(conf):
+    # Dos TL donde hace falta uno y un operario parcial: contando con el TL que sobra se recortaría
+    # al operario; con coste (Azul/Ryanair) el TL queda de refuerzo y el operario se mantiene.
+    filas = [_fila("TL", "TL1", 0), _fila("TL", "TL2", 0), _fila("PCP", "PARCIAL", 0, manana=(300, 660))]
+    perfiles = mensual.aprender_perfiles(filas, OCTUBRE, conf, {"PARCIAL": "TP"})
+    perfiles[2].jornada_minima = 120
+    dia = date(2026, 11, 6)
+    n = mensual.franjas_del_dia()
+    demanda = {"TL": [0] * n, "PB/TOW": [0] * n, "Operario": [0] * n}
+    for k in range(mensual._franja(300), mensual._franja(660)):
+        demanda["TL"][k] = demanda["Operario"][k] = 1
+    for contar, minutos in ((True, 120), (False, 360)):
+        jornadas = [mensual.Jornada(p, dia, [(300, 660)]) for p in perfiles]
+        mensual._recortar(jornadas, demanda, contar_tl_pb=contar)
+        assert jornadas[2].minutos == minutos
+    assert mensual.coste_tl_pb_operario(conf) > 0

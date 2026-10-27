@@ -1,0 +1,186 @@
+# Configuración de una base. Todos los tiempos en minutos.
+# Los valores son de partida: ajústalos a los estándares reales de la base.
+#
+# ESTE ARCHIVO ES EL PERFIL DE AZUL HANDLING PARA RYANAIR (convenio de Azul Handling, BOE 2025).
+# Otras empresas y otras aerolíneas trabajan de forma distinta: rotaciones, funciones, colores,
+# contratos y reglas del convenio se cambian aquí, no en el programa.
+
+zona_horaria: Europe/Madrid
+
+# Fecha en la que empieza el ciclo de cada patrón (día 1 de la rotación A / 1).
+inicio_ciclos: 2026-01-05
+
+rotaciones:
+  "6x3":  {trabajo: 6, libre: 3, grupos: {A: 0, B: 3, C: 6}}
+  "4x4":  {trabajo: 4, libre: 4, grupos: {"1": 0, "2": 2, "3": 4, "4": 6}}
+  "5x2":  {trabajo: 5, libre: 2, grupos: {}}   # parciales, discontinuos y eventuales
+
+turnos:
+  M:  {inicio: "04:30", fin: "12:30"}   # mañana, 8 h
+  I:  {inicio: "09:00", fin: "17:00"}   # intermedio, 8 h
+  T:  {inicio: "12:30", fin: "20:30"}   # tarde, 8 h
+  N:  {inicio: "16:30", fin: "00:30"}   # cierre, 8 h
+  MM: {inicio: "04:30", fin: "14:30"}   # mando intermedio mañana, 10 h
+  MT: {inicio: "14:00", fin: "00:00"}   # mando intermedio tarde, 10 h
+  PM: {inicio: "05:00", fin: "10:00"}   # parcial banco de primera hora
+  PT: {inicio: "17:00", fin: "22:00"}   # parcial pico de tarde
+
+# Turnos que puede usar cada colectivo.
+turnos_plataforma: [M, I, T, N]
+turnos_jardineras: [M, I, T, N]
+turnos_hipodromo: [M, T]
+turnos_mandos: [MM, MT]
+turnos_parciales: [PM, PT]
+
+# Puestos de un equipo de plataforma, en orden: 1 = TL, 2 = PB/TOW.
+equipo_plataforma: [TL, PB/TOW, Carretero, Cintero, Operario]
+
+# Ventana de trabajo del equipo respecto a STA/STD.
+servicio:
+  giro:          {antes_sta: 10, despues_std: 5}
+  solo_salida:   {antes_std: 50, despues_std: 5}
+  solo_llegada:  {antes_sta: 10, despues_sta: 40}
+  transito_entre_vuelos: 10
+
+# Autobuses para vuelos en remoto.
+jardineras:
+  llegada: {desde_sta: 0, hasta_sta: 20}
+  salida:  {antes_std: 40, hasta_antes_std: 15}
+  transito: 5
+
+# Funciones del cuadrante (columna DEPART.) -> categoría y puestos que puede cubrir.
+# PB*: pushback solo con barra; TOW: pushback eléctrico (a efectos de programación, ambos PB/TOW).
+# PCP: permiso de conducción en plataforma. GHA: sin permiso de conducir.
+# BH: personal de hipódromo; BHS: supervisor de hipódromo; BHPCP: hipódromo con PCP.
+funciones:
+  TL:        {categoria: TL,               habilitaciones: [TL, Operario]}
+  PB:        {categoria: PB/TOW,           habilitaciones: [PB/TOW, Carretero, Cintero, Operario]}
+  "PB*":     {categoria: PB/TOW,           habilitaciones: [PB/TOW, Carretero, Cintero, Operario]}
+  PB/JAR:    {categoria: PB/TOW,           habilitaciones: [PB/TOW, Carretero, Cintero, Operario, Jardinero]}
+  "PB*/JAR": {categoria: PB/TOW,           habilitaciones: [PB/TOW, Carretero, Cintero, Operario, Jardinero]}
+  TOW/JAR:   {categoria: PB/TOW,           habilitaciones: [PB/TOW, Carretero, Cintero, Operario, Jardinero]}
+  "TOW*":    {categoria: PB/TOW,           habilitaciones: [PB/TOW, Carretero, Cintero, Operario]}
+  PCP:       {categoria: Operario,         habilitaciones: [Carretero, Cintero, Operario]}
+  GHA:       {categoria: Operario,         habilitaciones: [Operario]}
+  JAR:       {categoria: Jardinero,        habilitaciones: [Jardinero]}
+  BH:        {categoria: Hipodromo,        habilitaciones: [Hipodromo]}
+  BHS:       {categoria: Hipodromo,        habilitaciones: [Hipodromo, Supervisor hipodromo]}
+  BHPCP:     {categoria: Hipodromo,        habilitaciones: [Hipodromo, Carretero, Operario]}
+  RCO:       {categoria: Mando intermedio, habilitaciones: [Mando intermedio]}
+  ARCO:      {categoria: Mando intermedio, habilitaciones: [Mando intermedio]}
+  # Terminal (pasaje). Solo se planifican si `pasaje` está activo.
+  AGP:       {categoria: Pasaje,             habilitaciones: [Facturación, Embarque, Oficina, Lost and found]}
+  RPA:       {categoria: Responsable pasaje, habilitaciones: [Responsable pasaje]}
+
+# Colores del cuadrante (RGB de la celda) -> motivo y si la persona está disponible ese día.
+marcas:
+  FFFFFF00: {motivo: Vacaciones,                  disponible: false}   # amarillo
+  FF7030A0: {motivo: Baja por enfermedad común,   disponible: false}   # morado
+  FF00B050: {motivo: Baja laboral,                disponible: false}   # verde
+  FF00B0F0: {motivo: Permiso retribuido,          disponible: false}   # azul
+  FFFF00FF: {motivo: Cambio de función,           disponible: true}    # fucsia
+  FFF00093: {motivo: Formación,                   disponible: false}   # rosa
+  FF000000: {motivo: Sanción disciplinaria,       disponible: false}   # negro
+  FFFF0000: {motivo: Falta no justificada,        disponible: false}   # rojo
+  # Marrón = fichaje tardío: la persona trabaja. No aparece en febrero;
+  # se recogen los marrones habituales de Excel hasta ver el real.
+  FF993300: {motivo: Fichaje tardío,              disponible: true}    # marrón
+  FFC65911: {motivo: Fichaje tardío,              disponible: true}    # marrón
+  FF833C0B: {motivo: Fichaje tardío,              disponible: true}    # marrón
+
+# Motivos de ausencia que se pueden registrar además de los de la tabla de colores (motivo: color).
+motivos_extra:
+  Permiso de paternidad o maternidad: FF00B0F0   # azul, como el permiso retribuido
+
+# Con cuadrante: solape mínimo (minutos) para que dos personas formen equipo.
+solape_minimo_equipo: 120
+
+# Tipos de contrato (los de Azul; cada empresa pone los suyos). Para el cuadrante del mes:
+#   jornadas_h: duraciones posibles de una jornada, en horas. Si hay varias, el programa elige
+#               la que mejor encaja con los vuelos y no da más horas de las necesarias.
+#   horario_fijo: concreción horaria; entra siempre a su hora habitual.
+# Quien no tiene contrato conocido: si su jornada de referencia es más corta que la completa se trata
+# como `contrato_parcial_por_defecto`; si no, mantiene la duración de su jornada de referencia.
+# En los turnos reales de noviembre hay muchas jornadas de 2 y 3 horas de parciales.
+contratos:
+  TC:  {nombre: Tiempo completo, jornadas_h: [8]}
+  TCC: {nombre: Tiempo completo con concreción horaria, horario_fijo: true}
+  TP:  {nombre: Tiempo parcial, jornadas_h: [2, 3, 4, 5, 6, 7, 8], horas_mes: [71, 128]}
+  FD:  {nombre: Fijo discontinuo, jornadas_h: [2, 3, 4, 5, 6, 7, 8], horas_mes: [47]}
+  FDC: {nombre: Fijo discontinuo con concreción horaria, horario_fijo: true}
+  EVE: {nombre: Eventual, jornadas_h: [2, 3, 4, 5, 6, 7, 8]}
+# horas_mes: [mínimo, máximo] de horas al mes. Solo es un aviso en la hoja "Horas" del Excel: el
+# convenio cuenta en promedio anual, así que un mes por debajo no es por sí solo un incumplimiento.
+# Convenio de Azul Handling, con 1.712 h/año de jornada completa (art. 31):
+#   - Fijo a tiempo parcial: entre el 50 % y el 90 % de la completa en cómputo anual
+#     (856-1.541 h/año, unas 71-128 h/mes). Horas complementarias especiales (art. 19): hasta
+#     20 h/mes más, sin pasar del 90 % (128 + 15 = unas 143 h/mes como mucho en un mes).
+#   - Fijo discontinuo (contratos desde el 31-03-2022): al menos el 33 % de 1.712 h, en proporción
+#     a los meses de llamamiento (unas 47 h por mes llamado).
+#   - Jornada partida: cada tramo de al menos 2 h y pausa de 1 a 5 h (las jornadas_h empiezan en 2).
+# El Estatuto (art. 12) no fija mínimo para un parcial; solo exige 10 h/semana para pactar
+# horas complementarias.
+contrato_parcial_por_defecto: TP
+# Un parcial cobra sus horas de contrato aunque no se las des: al recortar, su jornada no baja de
+# esta proporción de su jornada media en el mes de referencia (en noviembre de 2026 los parciales
+# hicieron de media un 80-85 % de las horas de octubre).
+jornada_minima_respecto_referencia: 0.8
+
+# Un TL o un PB/TOW que sobra en una franja puede hacer de operario. En Azul/Ryanair solo si hace
+# falta: si no, queda de refuerzo (extra) y no se quitan operarios contando con él.
+#   permitido: false -> nunca hacen de operario.
+#   coste: cuánto se evita (1000 = 15 min de operario sin cubrir; 0 = como un operario más).
+tl_pb_como_operario: {permitido: true, coste: 100}
+
+# Cambios sobre un cuadrante ya publicado (Reorganizar). Convenio de Azul Handling:
+#  - Parciales, art. 18.5.5: con 3 días de preaviso la empresa puede variar jornada y horario con el
+#    pacto de horas complementarias (hasta el 60 % de las horas ordinarias, si el contrato es de
+#    10 h/semana o más).
+#  - Parciales, art. 19: con menos preaviso, horas complementarias especiales: solo para quien se ha
+#    adherido esa temporada, avisando con más de 1 hora, como mucho 20 h al mes sobre lo programado
+#    (y 15 % de la jornada anual), y voluntarias si caen en su día de descanso.
+#    En Azul están DESACTIVADAS (hay pleitos contra ese artículo, 27-10-2026): con menos de 3 días
+#    de preaviso a un parcial no se le cambia.
+#  - Tiempo completo, art. 36: las horas por ausencias imprevistas que no se pueden cubrir con otro
+#    personal son perentorias: obligatorias, +75 % o 1 h 45 min de descanso por hora.
+#  - Concreción horaria (TCC, FDC): no se les cambia el horario.
+# preaviso_horario_completo_dias: preaviso mínimo para mover el horario de un tiempo completo
+# (el convenio no lo fija; en Azul son 5 días; null = sin mínimo). Con menos, solo se le puede
+# llamar como perentorias.
+cambios_publicado:
+  parciales: [TP, FD, EVE]
+  preaviso_complementarias_dias: 3
+  complementarias_especiales: false
+  complementarias_especiales_mes_h: 20
+  preaviso_horario_completo_dias: 5
+  texto_complementarias: "Complementarias pactadas (art. 18.5.5)"
+  texto_especiales: "Complementarias especiales (art. 19)"
+  texto_dia_libre: ", voluntarias en día libre"
+  texto_completo_dia_libre: "Perentorias (art. 36)"
+
+# Pasaje (terminal): personas que pide cada vuelo y puestos fijos mientras dura la operación (desde
+# que abre la primera facturación hasta la última salida o una hora después de la última llegada).
+# En Azul/Ryanair no se planifica (activo: false); el perfil de la demo lo activa.
+pasaje:
+  activo: false
+  facturacion: {personas: 4, abre_antes_std: 150, cierra_antes_std: 40}   # por vuelo
+  embarque:    {personas: 2, desde_antes_std: 45, hasta_antes_std: 0}     # por puerta y vuelo
+  puestos_fijos: {Oficina: 2, Lost and found: 1}
+  responsables_a_la_vez: 1
+  antes_primera_facturacion: 15
+  despues_ultima_llegada: 60
+
+# Vacaciones del año siguiente por puntos (pestaña Vacaciones del año). Los valores son un ejemplo:
+# cada empresa pone sus temporadas, puntos y cupos.
+#  - periodos_por_persona: quincenas que se lleva cada uno (2 quincenas = unos 30 días naturales).
+#  - Elige primero quien menos puntos lleva; cada quincena suma los puntos de su temporada.
+#  - cupo: parte de cada función que puede estar de vacaciones a la vez en esa quincena.
+vacaciones:
+  periodos_por_persona: 2
+  puntos_por_defecto: 2
+  cupo_por_defecto: 0.12
+  temporadas:
+    - {nombre: Verano alto, periodos: [JUL-1, JUL-2, AGO-1, AGO-2], puntos: 10, cupo: 0.06}
+    - {nombre: Verano bajo, periodos: [JUN-2, SEP-1], puntos: 6, cupo: 0.08}
+    - {nombre: Navidad, periodos: [DIC-2], puntos: 8, cupo: 0.08}
+    - {nombre: Semana Santa, periodos: [MAR-2], puntos: 8, cupo: 0.08}
