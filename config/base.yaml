@@ -5,6 +5,11 @@
 # Otras empresas y otras aerolíneas trabajan de forma distinta: rotaciones, funciones, colores,
 # contratos y reglas del convenio se cambian aquí, no en el programa.
 
+empresa:
+  nombre: "Azul Handling · Ryanair (ejemplo)"
+  cliente: Ryanair
+  convenio: Convenio de Azul Handling (BOE 2025)
+
 zona_horaria: Europe/Madrid
 
 # Fecha en la que empieza el ciclo de cada patrón (día 1 de la rotación A / 1).
