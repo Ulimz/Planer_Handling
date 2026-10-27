@@ -128,10 +128,12 @@ def _hoja_curva(ws, cm: CuadranteMes) -> None:
 
 
 def _hoja_cambios(ws, cambios: list[Cambio]) -> None:
-    ws.append(["Día", "Empleado", "Función", "Antes", "Ahora", "Tipo"])
+    ws.append(["Día", "Empleado", "Función", "Contrato", "Antes", "Ahora", "Tipo", "Días de preaviso",
+               "Horas nuevas", "Tipo de horas (convenio)"])
     for c in sorted(cambios, key=lambda c: (c.dia, c.tipo, c.empleado)):
-        ws.append([c.dia, c.empleado, c.funcion, c.antes, c.despues, c.tipo])
+        ws.append([c.dia, c.empleado, c.funcion, c.contrato, c.antes, c.despues, c.tipo, c.preaviso,
+                   c.horas or None, c.tipo_horas])
     for celda in ws[1]:
         celda.font, celda.fill = NEGRITA, CABECERA
-    for col, ancho in zip("ABCDEF", (12, 32, 10, 24, 24, 22)):
+    for col, ancho in zip("ABCDEFGHIJ", (12, 32, 10, 9, 24, 24, 22, 10, 10, 44)):
         ws.column_dimensions[col].width = ancho

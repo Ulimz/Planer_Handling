@@ -43,3 +43,24 @@ def test_reorganizar_cubre_a_quien_falta_moviendo_lo_minimo(conf):
     assert ("TL1", "Ausencia") in {(c.empleado, c.tipo) for c in cambios}
     assert all(c.empleado != "TL2" for c in cambios)             # quien ya cubría no se toca
     assert len(cm.dias) == len(OCTUBRE)
+
+
+@pytest.mark.parametrize("contrato, dias_aviso, esperado", [
+    ("TP", 0, "Complementarias especiales (art. 19), voluntarias en día libre"),
+    ("TP", 5, "Complementarias pactadas (art. 18.5.5)"),
+    ("TC", 0, "Perentorias (art. 36)"),
+    ("TCC", 5, None),                                  # concreción horaria: no se le llama
+])
+def test_reorganizar_segun_contrato_y_preaviso(conf, contrato, dias_aviso, esperado):
+    # TL1 se pone de baja la mañana del 1 de octubre; TL_L libra ese día y es el único que puede cubrirle.
+    filas = [_fila("TL", "TL1", 0), _fila("TL", "TL_T", 3), _fila("TL", "TL_L", 6), _fila("PB", "PB1", 0)] + [
+        _fila("PCP", f"OP{i}", 0) for i in range(3)]
+    dia = date(2026, 10, 1)
+    vuelos = {dia: [Vuelo(dia, vuelo_in="FR1", origen="STN", sta=8 * 60, vuelo_out="FR2", destino="STN", std=8 * 60 + 30)]}
+    _, cambios = mensual.reorganizar(filas, OCTUBRE, vuelos, [mensual.Ausencia("TL1", dia, dia, "Baja laboral")], conf, 5,
+                                     contratos={"TL_L": contrato}, aviso=date.fromordinal(dia.toordinal() - dias_aviso))
+    llamadas = [c for c in cambios if c.empleado == "TL_L"]
+    if esperado is None:
+        assert not llamadas
+    else:
+        assert [(c.tipo, c.tipo_horas, c.preaviso) for c in llamadas] == [("Llamado en día libre", esperado, dias_aviso)]

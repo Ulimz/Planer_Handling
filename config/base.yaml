@@ -128,3 +128,25 @@ jornada_minima_respecto_referencia: 0.8
 #   permitido: false -> nunca hacen de operario.
 #   coste: cuánto se evita (1000 = 15 min de operario sin cubrir; 0 = como un operario más).
 tl_pb_como_operario: {permitido: true, coste: 100}
+
+# Cambios sobre un cuadrante ya publicado (Reorganizar). Convenio de Azul Handling:
+#  - Parciales, art. 18.5.5: con 3 días de preaviso la empresa puede variar jornada y horario con el
+#    pacto de horas complementarias (hasta el 60 % de las horas ordinarias, si el contrato es de
+#    10 h/semana o más).
+#  - Parciales, art. 19: con menos preaviso, horas complementarias especiales: solo para quien se ha
+#    adherido esa temporada, avisando con más de 1 hora, como mucho 20 h al mes sobre lo programado
+#    (y 15 % de la jornada anual), y voluntarias si caen en su día de descanso.
+#  - Tiempo completo, art. 36: las horas por ausencias imprevistas que no se pueden cubrir con otro
+#    personal son perentorias: obligatorias, +75 % o 1 h 45 min de descanso por hora.
+#  - Concreción horaria (TCC, FDC): no se les cambia el horario.
+# preaviso_horario_completo_dias: preaviso mínimo para mover el horario de un tiempo completo
+# (el convenio no lo fija; null = sin mínimo).
+cambios_publicado:
+  parciales: [TP, FD, EVE]
+  preaviso_complementarias_dias: 3
+  complementarias_especiales_mes_h: 20
+  preaviso_horario_completo_dias: null
+  texto_complementarias: "Complementarias pactadas (art. 18.5.5)"
+  texto_especiales: "Complementarias especiales (art. 19)"
+  texto_dia_libre: ", voluntarias en día libre"
+  texto_completo_dia_libre: "Perentorias (art. 36)"

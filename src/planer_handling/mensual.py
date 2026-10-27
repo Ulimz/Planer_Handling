@@ -286,13 +286,16 @@ def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[
                    fin_anterior: dict[str, int], dias_usados: dict[str, int], segundos: float = 10,
                    ausentes: dict[str, str] | None = None,
                    actual: dict[str, list[tuple[int, int]]] | None = None,
-                   coste_tl_pb_operario: int = 0) -> list[Jornada]:
+                   coste_tl_pb_operario: int = 0,
+                   costes_cambio: dict[str, tuple[int | None, int | None]] | None = None) -> list[Jornada]:
     """Horarios del día. Con `actual` (el horario ya publicado de ese día) reorganiza: mantiene a
     cada uno en su horario salvo que haga falta moverlo para cubrir a los ausentes, y solo llama
     a alguien que libra si no hay otra forma.
     `coste_tl_pb_operario`: lo que cuesta cada franja en que un TL o PB que sobra hace de operario.
     Con 0 se cuenta con ellos como un operario más; con un coste, solo si hace falta y si no
-    quedan de refuerzo."""
+    quedan de refuerzo.
+    `costes_cambio` (al reorganizar): id -> (coste de moverle el horario, coste de llamarle en su día
+    libre). None = no se puede (por contrato o por falta de preaviso, ver `reglas_cambio`)."""
     modelo = cp_model.CpModel()
     n = franjas_del_dia()
     cubre: dict[str, list[list]] = {rol: [[] for _ in range(n)] for rol in PLANIFICADOS}
@@ -328,8 +331,15 @@ def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[
             continue
         if trabaja is None and actual is None and dias_usados.get(e.id, 0) >= p.dias_referencia:
             continue
+        coste_mover, coste_llamar = COSTE_CAMBIO, COSTE_IRREGULAR if p.patron == "irregular" else COSTE_LLAMAR_LIBRE
+        if actual is not None and costes_cambio and e.id in costes_cambio:
+            coste_mover, coste_llamar = costes_cambio[e.id]
+            if not publicado and coste_llamar is None:
+                continue                   # no se le puede llamar en su día libre
         opciones = _opciones(p, fase, fin_anterior.get(e.id))
-        if publicado and publicado not in opciones:
+        if publicado and coste_mover is None:
+            opciones = [publicado]         # no se le puede mover el horario
+        elif publicado and publicado not in opciones:
             opciones.append(publicado)
         if not opciones:
             continue
@@ -346,7 +356,8 @@ def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[
                 coste_opcion[(e.id, n_opcion)] = abs(tramos[0][0] - habitual) // PASO   # parecido a su horario
             elif tramos != publicado:
                 # Cambiar un horario ya publicado cuesta: solo si cubre lo que falta.
-                coste_opcion[(e.id, n_opcion)] = COSTE_CAMBIO + abs(tramos[0][0] - (publicado or tramos)[0][0]) // PASO
+                coste_opcion[(e.id, n_opcion)] = ((coste_mover if publicado else 0)
+                                                  + abs(tramos[0][0] - (publicado or tramos)[0][0]) // PASO)
             coste.append(coste_opcion.get((e.id, n_opcion), 0) * x)
         # Punto de partida para el optimizador (y plan de reserva): su horario publicado o el habitual.
         if publicado:
@@ -362,7 +373,7 @@ def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[
         else:
             modelo.AddAtMostOne(variables)
             # Llamar a un irregular solo si hace falta; a alguien que libra, menos todavía.
-            llamar = 50 if actual is None else (COSTE_IRREGULAR if p.patron == "irregular" else COSTE_LLAMAR_LIBRE)
+            llamar = 50 if actual is None else coste_llamar
             coste.append(llamar * sum(variables))
 
     por_id = {p.empleado.id: p for p in perfiles}
@@ -525,6 +536,44 @@ class Cambio:
     antes: str
     despues: str
     tipo: str                           # "Ausencia", "Cambio de horario", "Llamado en día libre"
+    contrato: str = ""
+    preaviso: int | None = None         # días entre el aviso y el cambio
+    horas: float = 0.0                  # horas fuera de lo que tenía publicado
+    tipo_horas: str = ""                # según el convenio (ver `cambios_publicado` en la config)
+
+
+def _minutos_fuera(antes, despues) -> int:
+    """Minutos de `despues` que no estaban en `antes`."""
+    dentro = {m for i, f in (antes or []) for m in range(i, f)}
+    return sum(1 for i, f in (despues or []) for m in range(i, f) if m not in dentro)
+
+
+def es_parcial(p: Perfil, conf: Configuracion) -> bool:
+    """Contrato a tiempo parcial (o sin contrato conocido y con jornada variable)."""
+    return (p.contrato in conf.datos.get("cambios_publicado", {}).get("parciales", [])
+            or (not p.contrato and bool(p.duraciones)))
+
+
+def reglas_cambio(p: Perfil, preaviso: int, usadas_mes: int, conf: Configuracion
+                  ) -> tuple[tuple[int | None, int | None], str, str]:
+    """Qué cuesta moverle el horario y llamarle en su día libre a esta persona con este preaviso
+    (None = no se puede), y cómo se llaman esas horas si se le mueve o se le llama.
+    Las reglas están en `cambios_publicado` de la configuración (las de Azul son un ejemplo)."""
+    reglas = conf.datos.get("cambios_publicado", {})
+    if p.horario_fijo:
+        return (None, None), "", ""
+    if es_parcial(p, conf):
+        if preaviso >= reglas.get("preaviso_complementarias_dias", 0):
+            texto = reglas.get("texto_complementarias", "Horas complementarias")
+            return (COSTE_CAMBIO * 3 // 5, COSTE_IRREGULAR), texto, texto
+        limite = reglas.get("complementarias_especiales_mes_h")
+        if limite is not None and usadas_mes >= limite * 60:
+            return (None, None), "", ""
+        texto = reglas.get("texto_especiales", "Horas complementarias especiales")
+        return (COSTE_CAMBIO, COSTE_LLAMAR_LIBRE), texto, texto + reglas.get("texto_dia_libre", "")
+    minimo = reglas.get("preaviso_horario_completo_dias")
+    mover = None if minimo is not None and preaviso < minimo else COSTE_CAMBIO
+    return (mover, COSTE_LLAMAR_LIBRE), "", reglas.get("texto_completo_dia_libre", "Horas extra")
 
 
 def _texto(tramos) -> str:
@@ -533,11 +582,16 @@ def _texto(tramos) -> str:
 
 def reorganizar(filas: list[FilaCuadrante], dias_mes: list[date], vuelos_por_dia: dict[date, list[Vuelo]],
                 ausencias: list[Ausencia], conf: Configuracion, segundos_por_dia: float = 10,
-                progreso=None) -> tuple[CuadranteMes, list[Cambio]]:
+                progreso=None, contratos: dict[str, str] | None = None,
+                aviso: date | None = None) -> tuple[CuadranteMes, list[Cambio]]:
     """Rehace los días de `vuelos_por_dia` de un cuadrante ya publicado para cubrir a quien falta,
-    moviendo a las menos personas posibles. El resto de días se queda como estaba."""
+    moviendo a las menos personas posibles. El resto de días se queda como estaba.
+    `aviso`: día en que se comunican los cambios (por defecto hoy). Con el contrato de cada persona y
+    los días de preaviso se decide a quién se puede mover y qué tipo de horas genera."""
+    aviso = aviso or date.today()
     marcas = conf.datos.get("marcas", {})
-    perfiles = aprender_perfiles(filas, dias_mes, conf)
+    perfiles = aprender_perfiles(filas, dias_mes, conf, contratos)
+    especiales: Counter = Counter()      # minutos por persona con poco preaviso en el mes
     fila_de = {f.nombre: f for f in filas}
     cambios: list[Cambio] = []
     dias: list[DiaPlanificado] = []
@@ -564,17 +618,28 @@ def reorganizar(filas: list[FilaCuadrante], dias_mes: list[date], vuelos_por_dia
                                    if fila_de[p.empleado.nombre].jornadas.get(dia)
                                    and fila_de[p.empleado.nombre].jornadas[dia].tramos])
             demanda_dia = {r: [min(d, c) for d, c in zip(demanda_vuelos[r], publicada[r])] for r in PLANIFICADOS}
+            preaviso = (dia - aviso).days
+            reglas = {p.empleado.id: reglas_cambio(p, preaviso, especiales[p.empleado.id], conf) for p in perfiles}
             jornadas = planificar_dia(dia, demanda_dia, perfiles, dias_mes[0], fin_anterior, {}, segundos_por_dia,
-                                      ausentes, actual, coste_tl_pb_operario(conf))
+                                      ausentes, actual, coste_tl_pb_operario(conf),
+                                      {eid: costes for eid, (costes, _, _) in reglas.items()})
             nuevo = {j.perfil.empleado.id: j.tramos for j in jornadas}
+            minimo_complementarias = conf.datos.get("cambios_publicado", {}).get("preaviso_complementarias_dias", 0)
             for p in perfiles:
                 eid = p.empleado.id
                 antes, despues = actual.get(eid), nuevo.get(eid)
                 if eid in registradas and antes:
-                    cambios.append(Cambio(dia, p.empleado.nombre, p.funcion, _texto(antes), ausentes[eid], "Ausencia"))
+                    cambios.append(Cambio(dia, p.empleado.nombre, p.funcion, _texto(antes), ausentes[eid], "Ausencia",
+                                          p.contrato, preaviso))
                 elif eid not in ausentes and antes != despues:
                     tipo = "Cambio de horario" if antes else "Llamado en día libre"
-                    cambios.append(Cambio(dia, p.empleado.nombre, p.funcion, _texto(antes), _texto(despues), tipo))
+                    fuera = _minutos_fuera(antes, despues)
+                    _, si_mueve, si_llama = reglas[eid]
+                    tipo_horas = (si_mueve if antes else si_llama) if fuera else ""
+                    if fuera and es_parcial(p, conf) and preaviso < minimo_complementarias:
+                        especiales[eid] += fuera
+                    cambios.append(Cambio(dia, p.empleado.nombre, p.funcion, _texto(antes), _texto(despues), tipo,
+                                          p.contrato, preaviso, round(fuera / 60, 2), tipo_horas))
             dp = DiaPlanificado(dia, len(vuelos_por_dia[dia]), demanda_dia, cobertura(jornadas), jornadas, ausentes)
         else:
             jornadas = [Jornada(p, dia, actual[p.empleado.id]) for p in perfiles if p.empleado.id in actual]

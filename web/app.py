@@ -287,10 +287,17 @@ with ausencias_tab:
     cuadrante_r = archivo("Cuadrante publicado", ["xlsx"], "cr", "cuadrante_programa_noviembre_2026.xlsx")
     vuelos_r = archivo("Vuelos del mes (Flights, PACOTRON u OMS)", ["xlsx", "xls", "csv"], "vr",
                        "vuelos_noviembre_2026.xlsx")
+    contratos_r = archivo("Contratos (recomendado): Empleado, Contrato. Según el contrato y los días de preaviso "
+                          "se decide a quién se puede mover y qué tipo de horas genera.", ["xlsx", "csv"], "conr",
+                          "contratos.xlsx")
     dias_r = dias_del_mes(anio_r, mes_r)
     rango = st.date_input("Días a reorganizar", value=(max(hoy, dias_r[0]) if hoy <= dias_r[-1] else dias_r[0],
                                                          min(dias_r[-1], date.fromordinal(max(hoy, dias_r[0]).toordinal() + 6))),
                           min_value=dias_r[0], max_value=dias_r[-1], format="DD/MM/YYYY", key="rango")
+    aviso_r = st.date_input("Día en que se avisa de los cambios", value=NOVIEMBRE_DEMO if demo else hoy,
+                            format="DD/MM/YYYY", key="aviso_r_demo" if demo else "aviso_r",
+                            help="Con 3 días o más de preaviso, a un parcial se le aplica el pacto de horas "
+                                 "complementarias; con menos, horas complementarias especiales (máx. 20 h al mes).")
     con_nombres_r = st.checkbox("Mostrar nombres (si no, solo códigos)", value=True, key="nmr")
     if st.button("Reorganizar", type="primary", disabled=not (cuadrante_r and vuelos_r and len(rango) == 2)):
         with tempfile.TemporaryDirectory() as tmp:
@@ -303,15 +310,19 @@ with ausencias_tab:
                     estado.update(label=f"{len(filas)} personas y {sum(map(len, vuelos.values()))} vuelos. "
                                         "Reorganizando día a día…")
                     barra = st.progress(0.0)
+                    contratos = leer_contratos(guardar(contratos_r, tmp)) if contratos_r else None
                     cm, cambios = reorganizar(filas, dias_r, vuelos, almacen.ausencias(), conf, 20,
-                                              progreso=lambda d, hechos, total: barra.progress(hechos / total, f"{d:%d/%m}"))
+                                              progreso=lambda d, hechos, total: barra.progress(hechos / total, f"{d:%d/%m}"),
+                                              contratos=contratos, aviso=aviso_r)
                     salida = tmp / f"cuadrante_reorganizado_{anio_r}-{mes_r:02d}.xlsx"
                     exportar_mes(cm, salida, con_nombres_r, colores, cambios)
                     estado.update(label="Reorganización lista", state="complete")
                 st.download_button("Descargar cuadrante reorganizado", salida.read_bytes(), salida.name, type="primary")
                 if cambios:
                     st.dataframe([{"Día": c.dia.strftime("%d/%m"), "Persona": c.empleado, "Función": c.funcion,
-                                   "Antes": c.antes, "Ahora": c.despues, "Cambio": c.tipo}
+                                   "Contrato": c.contrato, "Antes": c.antes, "Ahora": c.despues, "Cambio": c.tipo,
+                                   "Preaviso (días)": c.preaviso, "Horas nuevas": c.horas or "",
+                                   "Tipo de horas": c.tipo_horas}
                                   for c in sorted(cambios, key=lambda c: (c.dia, c.tipo))], hide_index=True)
                 else:
                     st.info("No hace falta cambiar nada en esos días.")
