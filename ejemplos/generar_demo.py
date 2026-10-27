@@ -4,7 +4,8 @@
   (Depart. | Empleado | una columna por día con "HH:MM\\nHH:MM"). Vacaciones y bajas en color.
 - demo/contratos.xlsx: Empleado | Contrato (TC, TP, FD, EVE, TCC).
 - demo/vuelos_noviembre_2026.xlsx: programación del mes que se planifica (formato PACOTRON,
-  horas Zulu), con una aerolínea inventada (XY).
+  horas Zulu). Inventada, con la forma de una aerolínea vacacional británica (código LS, como Jet2):
+  solo giros desde Reino Unido, sin aviones en base, y mucho más tráfico unos días que otros.
 - demo/cuadrante_a_mano_noviembre_2026.xlsx: noviembre sin el programa (rotación con el horario de
   siempre), para compararlo con el que sale del programa.
 
@@ -32,12 +33,14 @@ APELLIDOS = ["Alonso", "Blanco", "Cano", "Castro", "Delgado", "Díaz", "Fuentes"
              "Herrera", "Iglesias", "León", "Lozano", "Marín", "Méndez", "Molina", "Morales", "Navarro",
              "Ortega", "Pastor", "Peña", "Prieto", "Ramos", "Rubio", "Santos", "Serrano", "Soto", "Vega",
              "Vidal", "Zamora"]
-AEROPUERTOS = ["LIS", "OPO", "BER", "CIA", "BVA", "CRL", "DUB", "EDI", "MAN", "STN", "BGY", "VIE", "BUD",
-               "KRK", "WMI", "MLA", "ATH", "PMI", "TFS", "AGP", "SVQ", "VLC", "BCN", "SCQ", "OVD", "MRS"]
+AEROLINEA = "LS"
+AEROPUERTOS = ["MAN", "LBA", "BHX", "EMA", "STN", "GLA", "EDI", "BFS", "NCL", "BRS", "LPL", "BOH"]
+# Giros por día de la semana (lunes a domingo): una vacacional concentra el tráfico en unos días.
+GIROS_POR_DIA = [26, 20, 24, 32, 28, 36, 34]
 
-# Función del cuadrante -> (personas, proporción de tiempo completo). Unas 300 personas.
-PLANTILLA = {"TL": (60, 0.5), "TOW/JAR": (32, 0.45), "PB*/JAR": (24, 0.45), "PB": (8, 0.5),
-             "PCP": (125, 0.3), "GHA": (12, 0.3), "JAR": (18, 0.4)}
+# Función del cuadrante -> (personas, proporción de tiempo completo). Unas 130 personas.
+PLANTILLA = {"TL": (27, 0.5), "TOW/JAR": (13, 0.45), "PB*/JAR": (10, 0.45), "PB": (4, 0.5),
+             "PCP": (56, 0.3), "GHA": (6, 0.3), "JAR": (8, 0.4)}
 MANDOS = {"RCO": 4, "ARCO": 4}
 VACACIONES = "FFFFFF00"
 BAJA = "FF7030A0"
@@ -151,29 +154,22 @@ def escribir_contratos(gente: list[dict], ruta: Path) -> None:
 
 def vuelos_del_dia(dia: date, rnd: random.Random) -> list[tuple]:
     """(vuelo_in, origen, sta, vuelo_out, destino, std, tipo, puesto) en hora local.
-    Una base de 16 aviones que salen a primera hora y vuelven por la noche, y giros entre medias
-    con dos picos (media mañana y tarde). El fin de semana hay algo más de tráfico."""
+    Solo giros desde Reino Unido (ningún avión duerme en la base), de 50 a 60 minutos, en tres olas:
+    mañana, primera hora de la tarde y noche."""
     filas = []
-    base = 16
-    giros = 46 + (6 if dia.weekday() in (4, 6) else 0) + rnd.randint(-3, 3)
+    giros = GIROS_POR_DIA[dia.weekday()] + rnd.randint(-2, 2)
 
     def numero() -> str:
-        return f"XY{rnd.randint(1000, 9899)}"
+        return f"{AEROLINEA}{rnd.randint(100, 2999)}"
 
-    def puesto() -> str:
-        return f"R{rnd.randint(1, 15):02d}" if rnd.random() < 0.3 else f"C{rnd.randint(1, 20):02d}"
-
-    for _ in range(base):
-        filas.append((None, None, None, numero(), rnd.choice(AEROPUERTOS), rnd.choice(range(360, 451, 5)),
-                      "B738", puesto()))
-        filas.append((numero(), rnd.choice(AEROPUERTOS), rnd.choice(range(1290, 1436, 5)), None, None, None,
-                      "B738", puesto()))
     for _ in range(giros):
-        pico = rnd.choices([(480, 690), (690, 930), (930, 1170), (1170, 1320)], [0.35, 0.2, 0.35, 0.1])[0]
-        sta = rnd.choice(range(pico[0], pico[1], 5))
-        filas.append((numero(), rnd.choice(AEROPUERTOS), sta, numero(), rnd.choice(AEROPUERTOS),
-                      sta + rnd.choice([25, 25, 30, 35]), rnd.choice(["B738", "B738", "B38M"]), puesto()))
-    return sorted(filas, key=lambda f: f[2] if f[2] is not None else f[5])
+        ola = rnd.choices([(450, 750), (750, 1080), (1080, 1380)], [0.45, 0.35, 0.2])[0]
+        sta = rnd.choice(range(ola[0], ola[1], 5))
+        origen = rnd.choice(AEROPUERTOS)
+        puesto = f"R{rnd.randint(1, 15):02d}" if rnd.random() < 0.3 else f"C{rnd.randint(1, 20):02d}"
+        filas.append((numero(), origen, sta, numero(), origen, sta + rnd.choice([50, 55, 55, 60]),
+                      rnd.choice(["B738", "B738", "A21N"]), puesto))
+    return sorted(filas, key=lambda f: f[2])
 
 
 def escribir_vuelos(dias: list[date], ruta: Path, rnd: random.Random) -> None:

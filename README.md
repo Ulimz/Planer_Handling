@@ -72,11 +72,13 @@ Pendiente: demanda de jardineras e hipódromo. Por ahora esas personas mantienen
 
 En Windows, doble clic en `arrancar_web.bat`.
 - La primera vez instala lo necesario. Hace falta tener Python instalado.
-- Después se abre el navegador con cuatro pestañas:
+- Después se abre el navegador con cinco pestañas:
+  - **Resumen**: subes un cuadrante y los vuelos del mes y ves, cada 15 minutos, cuánta gente hay frente a la que piden los vuelos. Si subes otro cuadrante del mismo mes (por ejemplo el hecho a mano), compara horas y huecos.
   - **Plantilla y ausencias**: apuntas bajas, vacaciones, sanciones y permisos, y das el alta cuando la persona vuelve. Se guardan en `datos/registro/` (fuera de Git). Desde aquí también se reorganiza un cuadrante ya publicado: el programa cambia el horario a las menos personas posibles para cubrir a quien falta y entrega la lista de cambios (hoja Cambios del Excel).
   - **Rotaciones del año**: subes el último cuadrante (y, si quieres, el del mes anterior) y descargas el calendario del año que elijas, con cada día de mañana, de tarde o libre. La rotación continúa desde donde va cada persona; no se reinicia en enero.
   - **Cuadrante del mes**: subes los vuelos del mes, el cuadrante de referencia y, si quieres, las ausencias, y descargas el cuadrante. Las ausencias apuntadas se tienen en cuenta solas.
   - **Parrilla del día**: subes el cuadrante y los vuelos del día, y descargas la parrilla. Quien esté de baja o de vacaciones no entra en ningún equipo.
 - Todo se calcula en el propio ordenador y los archivos no se envían a ningún sitio.
+- **Demo**: el interruptor "Demo con una empresa ficticia" de la barra lateral carga una empresa inventada (`ejemplos/demo/`, se rehace con `python ejemplos/generar_demo.py`): 132 personas, contratos, cuadrante de octubre, vuelos de noviembre con la forma de una operación vacacional desde Reino Unido, y el noviembre que sale del programa y uno "a mano" para compararlos. Las ausencias de la demo se guardan aparte, en `datos/registro_demo/`.
 
 En Linux o Mac: `pip install -e .[web]` y después `streamlit run web/app.py`.

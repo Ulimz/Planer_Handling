@@ -37,8 +37,9 @@ st.title("Planificador de handling")
 st.caption("Todo se calcula en este ordenador. Los archivos no se envían a ningún sitio.")
 demo = st.sidebar.toggle("Demo con una empresa ficticia", value=False)
 if demo:
-    st.sidebar.caption("Plantilla de 287 personas, nombres y vuelos inventados (aerolínea XY). "
-                       "Los archivos ya están cargados: solo hay que pulsar los botones.")
+    st.sidebar.caption("Plantilla de 132 personas con nombres inventados y un mes de vuelos inventado con la "
+                       "forma de una operación vacacional desde Reino Unido. Los archivos ya están cargados: "
+                       "solo hay que pulsar los botones.")
     st.info("Modo demo: empresa ficticia. Mes de referencia octubre de 2026, se planifica noviembre de 2026.")
 
 
