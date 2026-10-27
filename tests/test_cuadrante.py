@@ -43,8 +43,8 @@ def test_parrilla_desde_cuadrante(tmp_path, conf):
     ruta = tmp_path / "turnos.xlsx"
     _cuadrante(ruta)
     dia = date(2025, 2, 1)
-    vuelos = [Vuelo(dia, vuelo_out="FR1", destino="STN", std=360),
-              Vuelo(dia, vuelo_in="FR2", origen="DUB", sta=500, vuelo_out="FR3", destino="DUB", std=525, puesto="R05")]
+    vuelos = [Vuelo(dia, vuelo_out="XX1", destino="STN", std=360),
+              Vuelo(dia, vuelo_in="XX2", origen="DUB", sta=500, vuelo_out="XX3", destino="DUB", std=525, puesto="R05")]
     p = generar_parrilla_cuadrante(dia, vuelos, leer_cuadrante(ruta, 2025), conf, segundos=5)
     assert len(p.reparto.equipos) == 1
     equipo = p.reparto.equipos[0]
@@ -59,7 +59,7 @@ def test_color_de_vacaciones_deja_fuera_aunque_tenga_horas(tmp_path, conf):
     ruta = tmp_path / "turnos.xlsx"
     _cuadrante(ruta)  # la fila 3 (PB*/JAR, 1 de febrero) está en amarillo
     dia = date(2025, 2, 1)
-    p = generar_parrilla_cuadrante(dia, [Vuelo(dia, vuelo_out="FR1", destino="STN", std=360)],
+    p = generar_parrilla_cuadrante(dia, [Vuelo(dia, vuelo_out="XX1", destino="STN", std=360)],
                                    leer_cuadrante(ruta, 2025), conf, segundos=5)
     ausencias = [i for i in p.incidencias if i.codigo == "AUSENCIA"]
     assert len(ausencias) == 1 and "Vacaciones" in ausencias[0].detalle
@@ -86,7 +86,7 @@ def test_cada_tl_abre_su_equipo(tmp_path, conf):
         ws.append([funcion, nombre] + ["05:00\n12:45"] * 7)
     wb.save(ruta)
     dia = date(2025, 2, 1)
-    p = generar_parrilla_cuadrante(dia, [Vuelo(dia, vuelo_out="FR1", destino="STN", std=420)],
+    p = generar_parrilla_cuadrante(dia, [Vuelo(dia, vuelo_out="XX1", destino="STN", std=420)],
                                    leer_cuadrante(ruta, 2025), conf, segundos=5)
     assert len(p.reparto.equipos) == 2
     # Un solo vuelo: basta un equipo y el otro queda de refuerzo.

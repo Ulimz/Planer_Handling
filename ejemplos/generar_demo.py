@@ -4,8 +4,9 @@
   (Depart. | Empleado | una columna por día con "HH:MM\\nHH:MM"). Vacaciones y bajas en color.
 - demo/contratos.xlsx: Empleado | Contrato (TC, TP, FD, EVE, TCC).
 - demo/vuelos_noviembre_2026.xlsx: programación del mes que se planifica (formato PACOTRON,
-  horas Zulu). Inventada, con la forma de una aerolínea vacacional británica (código LS, como Jet2):
-  solo giros desde Reino Unido, sin aviones en base, y mucho más tráfico unos días que otros.
+  horas Zulu). Inventada (vuelos XX), con la forma de una aerolínea vacacional británica: solo giros
+  desde Reino Unido, sin aviones en base, y mucho más tráfico unos días que otros.
+Sin nombres de personas: cada empleado es un código (EMP001…).
 - demo/cuadrante_a_mano_noviembre_2026.xlsx: noviembre sin el programa (rotación con el horario de
   siempre), para compararlo con el que sale del programa.
 
@@ -26,14 +27,7 @@ REFERENCIA = (2026, 10)
 PLANIFICADO = (2026, 11)
 DIAS_SEMANA = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"]
 
-NOMBRES = ["Alba", "Adrián", "Ana", "Andrés", "Carmen", "Carlos", "Claudia", "Daniel", "Elena", "Fernando",
-           "Irene", "Javier", "Laura", "Luis", "Lucía", "Manuel", "Marta", "Miguel", "Nerea", "Pablo",
-           "Paula", "Raúl", "Rocío", "Sergio", "Sara", "Tomás", "Valeria", "Víctor", "Yolanda", "Óscar"]
-APELLIDOS = ["Alonso", "Blanco", "Cano", "Castro", "Delgado", "Díaz", "Fuentes", "Gallego", "Garrido",
-             "Herrera", "Iglesias", "León", "Lozano", "Marín", "Méndez", "Molina", "Morales", "Navarro",
-             "Ortega", "Pastor", "Peña", "Prieto", "Ramos", "Rubio", "Santos", "Serrano", "Soto", "Vega",
-             "Vidal", "Zamora"]
-AEROLINEA = "LS"
+AEROLINEA = "XX"
 AEROPUERTOS = ["MAN", "LBA", "BHX", "EMA", "STN", "GLA", "EDI", "BFS", "NCL", "BRS", "LPL", "BOH"]
 # Giros por día de la semana (lunes a domingo): una vacacional concentra el tráfico en unos días.
 GIROS_POR_DIA = [26, 20, 24, 32, 28, 36, 34]
@@ -63,17 +57,8 @@ def texto(tramos: list[tuple[int, int]]) -> str:
     return "\n\n".join(f"{hhmm(i)}\n{hhmm(f)}" for i, f in tramos)
 
 
-def nombres_unicos(n: int, rnd: random.Random) -> list[str]:
-    vistos: set[str] = set()
-    while len(vistos) < n:
-        vistos.add(f"{rnd.choice(APELLIDOS)} {rnd.choice(APELLIDOS)}, {rnd.choice(NOMBRES)}".upper())
-    return sorted(vistos)
-
-
 def personas(rnd: random.Random) -> list[dict]:
     """Cada persona: función, contrato, grupo de rotación y horario habitual de mañana y de tarde."""
-    total = sum(n for n, _ in PLANTILLA.values()) + sum(MANDOS.values())
-    nombres = nombres_unicos(total, rnd)
     resultado = []
     for funcion, (n, completos) in PLANTILLA.items():
         for i in range(n):
@@ -99,10 +84,11 @@ def personas(rnd: random.Random) -> list[dict]:
         for i in range(n):
             resultado.append({"funcion": funcion, "contrato": "TC", "grupo": i % 4, "mando": True,
                               "manana": [(285, 885)], "tarde": [(900, 1440)]})
-    for p, nombre in zip(resultado, nombres):
-        p["nombre"] = nombre
     rnd.shuffle(resultado)
-    return sorted(resultado, key=lambda p: list(PLANTILLA).index(p["funcion"]) if p["funcion"] in PLANTILLA else 99)
+    resultado.sort(key=lambda p: list(PLANTILLA).index(p["funcion"]) if p["funcion"] in PLANTILLA else 99)
+    for n, p in enumerate(resultado, 1):
+        p["nombre"] = f"EMP{n:03d}"
+    return resultado
 
 
 def jornada(p: dict, dia: date) -> list[tuple[int, int]] | None:
@@ -137,7 +123,7 @@ def escribir_cuadrante(gente: list[dict], dias: list[date], ruta: Path, rnd: ran
     for celda in ws[1]:
         celda.font = Font(bold=True)
         celda.alignment = Alignment(wrap_text=True, horizontal="center")
-    ws.column_dimensions["B"].width = 30
+    ws.column_dimensions["B"].width = 12
     ws.freeze_panes = "C2"
     wb.save(ruta)
 

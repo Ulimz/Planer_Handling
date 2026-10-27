@@ -36,8 +36,8 @@ def test_reorganizar_cubre_a_quien_falta_moviendo_lo_minimo(conf):
             tarde.jornadas[dia] = Jornada([(300, 780)])
     filas.append(tarde)
     dia = date(2026, 10, 1)                           # primera mañana del ciclo
-    vuelos = {dia: [Vuelo(dia, vuelo_in="FR1", origen="STN", sta=8 * 60, vuelo_out="FR2", destino="STN", std=8 * 60 + 30),
-                    Vuelo(dia, vuelo_in="FR3", origen="DUB", sta=8 * 60, vuelo_out="FR4", destino="DUB", std=8 * 60 + 30)]}
+    vuelos = {dia: [Vuelo(dia, vuelo_in="XX1", origen="STN", sta=8 * 60, vuelo_out="XX2", destino="STN", std=8 * 60 + 30),
+                    Vuelo(dia, vuelo_in="XX3", origen="DUB", sta=8 * 60, vuelo_out="XX4", destino="DUB", std=8 * 60 + 30)]}
     ausencias = [mensual.Ausencia("TL1", dia, dia, "Baja laboral")]
     cm, cambios = mensual.reorganizar(filas, OCTUBRE, vuelos, ausencias, conf, 5)
     assert ("TL1", "Ausencia") in {(c.empleado, c.tipo) for c in cambios}
@@ -57,7 +57,7 @@ def test_reorganizar_segun_contrato_y_preaviso(conf, contrato, dias_aviso, esper
     filas = [_fila("TL", "TL1", 0), _fila("TL", "TL_T", 3), _fila("TL", "TL_L", 6), _fila("PB", "PB1", 0)] + [
         _fila("PCP", f"OP{i}", 0) for i in range(3)]
     dia = date(2026, 10, 1)
-    vuelos = {dia: [Vuelo(dia, vuelo_in="FR1", origen="STN", sta=8 * 60, vuelo_out="FR2", destino="STN", std=8 * 60 + 30)]}
+    vuelos = {dia: [Vuelo(dia, vuelo_in="XX1", origen="STN", sta=8 * 60, vuelo_out="XX2", destino="STN", std=8 * 60 + 30)]}
     _, cambios = mensual.reorganizar(filas, OCTUBRE, vuelos, [mensual.Ausencia("TL1", dia, dia, "Baja laboral")], conf, 5,
                                      contratos={"TL_L": contrato}, aviso=date.fromordinal(dia.toordinal() - dias_aviso))
     llamadas = [c for c in cambios if c.empleado == "TL_L"]

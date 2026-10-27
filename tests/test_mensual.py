@@ -29,18 +29,18 @@ def test_aprende_rotacion_fases_y_horas(conf):
 
 def test_empareja_llegada_y_salida_sueltas_en_un_giro():
     dia = date(2026, 11, 3)
-    vuelos = [Vuelo(dia, vuelo_in="FR1", origen="EIN", sta=600),
-              Vuelo(dia, vuelo_out="FR2", destino="DUB", std=650),
-              Vuelo(dia, vuelo_out="FR3", destino="STN", std=360)]
+    vuelos = [Vuelo(dia, vuelo_in="XX1", origen="EIN", sta=600),
+              Vuelo(dia, vuelo_out="XX2", destino="DUB", std=650),
+              Vuelo(dia, vuelo_out="XX3", destino="STN", std=360)]
     resultado = mensual.emparejar_giros(vuelos)
-    assert [(v.codigo, v.sta, v.std) for v in resultado] == [("FR3", None, 360), ("FR1/FR2", 600, 650)]
+    assert [(v.codigo, v.sta, v.std) for v in resultado] == [("XX3", None, 360), ("XX1/XX2", 600, 650)]
 
 
 def test_planifica_horarios_que_cubren_los_vuelos(conf):
     filas = [_fila("TL", "TL1", 0), _fila("PB", "PB1", 0)] + [_fila("PCP", f"OP{i}", 0) for i in range(3)]
     perfiles = mensual.aprender_perfiles(filas, OCTUBRE, conf)
     dia = date(2026, 11, 6)                              # primera mañana del ciclo
-    vuelos = {dia: [Vuelo(dia, vuelo_in="FR1", origen="STN", sta=8 * 60, vuelo_out="FR2", destino="STN", std=8 * 60 + 30)]}
+    vuelos = {dia: [Vuelo(dia, vuelo_in="XX1", origen="STN", sta=8 * 60, vuelo_out="XX2", destino="STN", std=8 * 60 + 30)]}
     cm = mensual.planificar_mes(vuelos, perfiles, OCTUBRE[0], conf, segundos_por_dia=5)
     dp = cm.dias[0]
     assert len(dp.jornadas) == 5
@@ -62,8 +62,8 @@ def test_partidos_y_ausencias(conf, tmp_path):
                   "Motivo": ["Vacaciones"]}).to_excel(ruta, index=False)
     dia = date(2026, 11, 6)
     # Dos giros separados: a las 06:00 y a las 11:00. Un partido los cubre mejor que un bloque.
-    vuelos = {dia: [Vuelo(dia, vuelo_in="FR1", origen="STN", sta=6 * 60, vuelo_out="FR2", destino="STN", std=6 * 60 + 30),
-                    Vuelo(dia, vuelo_in="FR3", origen="DUB", sta=11 * 60, vuelo_out="FR4", destino="DUB", std=11 * 60 + 30)]}
+    vuelos = {dia: [Vuelo(dia, vuelo_in="XX1", origen="STN", sta=6 * 60, vuelo_out="XX2", destino="STN", std=6 * 60 + 30),
+                    Vuelo(dia, vuelo_in="XX3", origen="DUB", sta=11 * 60, vuelo_out="XX4", destino="DUB", std=11 * 60 + 30)]}
     cm = mensual.planificar_mes(vuelos, perfiles, OCTUBRE[0], conf, 5, leer_ausencias(ruta))
     dp = cm.dias[0]
     assert dp.ausentes == {perfiles[3].empleado.id: "Vacaciones"}
@@ -82,7 +82,7 @@ def test_contratos_parcial_se_recorta_y_completo_no(conf):
     assert por_nombre["COMPLETO"].duracion == 480 and not por_nombre["COMPLETO"].duraciones
     assert por_nombre["PARCIAL"].duraciones and por_nombre["FIJO"].horario_fijo
     dia = date(2026, 11, 6)
-    vuelos = {dia: [Vuelo(dia, vuelo_in="FR1", origen="STN", sta=8 * 60, vuelo_out="FR2", destino="STN", std=8 * 60 + 30)]}
+    vuelos = {dia: [Vuelo(dia, vuelo_in="XX1", origen="STN", sta=8 * 60, vuelo_out="XX2", destino="STN", std=8 * 60 + 30)]}
     cm = mensual.planificar_mes(vuelos, perfiles, OCTUBRE[0], conf, segundos_por_dia=5)
     jornadas = {j.perfil.empleado.nombre: j for j in cm.dias[0].jornadas}
     assert jornadas["COMPLETO"].minutos == 480

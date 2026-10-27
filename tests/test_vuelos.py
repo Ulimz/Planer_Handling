@@ -15,16 +15,16 @@ def test_desfase_verano_e_invierno():
 def test_pacotron_pasa_zulu_a_local_y_cruza_medianoche(tmp_path):
     ruta = tmp_path / "vuelos.xlsx"
     pd.DataFrame([
-        {"FLIGHT DATE.": "15/07/2027", "FLIGHT IN": "", "ORIG": "", "STA": "", "FLIGHT OUT": "FR1000",
+        {"FLIGHT DATE.": "15/07/2027", "FLIGHT IN": "", "ORIG": "", "STA": "", "FLIGHT OUT": "XX1000",
          "DEST": "STN", "STD": "04:00", "STAND": "C01"},
-        {"FLIGHT DATE.": "15/07/2027", "FLIGHT IN": "FR1001", "ORIG": "BGY", "STA": "21:50",
-         "FLIGHT OUT": "FR1002", "DEST": "DUB", "STD": "22:15", "STAND": "R03"},
-        {"FLIGHT DATE.": "16/07/2027", "FLIGHT IN": "FR9999", "ORIG": "BGY", "STA": "10:00",
+        {"FLIGHT DATE.": "15/07/2027", "FLIGHT IN": "XX1001", "ORIG": "BGY", "STA": "21:50",
+         "FLIGHT OUT": "XX1002", "DEST": "DUB", "STD": "22:15", "STAND": "R03"},
+        {"FLIGHT DATE.": "16/07/2027", "FLIGHT IN": "XX9999", "ORIG": "BGY", "STA": "10:00",
          "FLIGHT OUT": "", "DEST": "", "STD": "", "STAND": ""},
     ]).to_excel(ruta, index=False)
     vuelos, incidencias = leer_vuelos(ruta, date(2027, 7, 15))
     assert incidencias == []
-    assert [v.codigo for v in vuelos] == ["FR1000", "FR1001/FR1002"]
+    assert [v.codigo for v in vuelos] == ["XX1000", "XX1001/XX1002"]
     assert vuelos[0].std == 6 * 60
     giro = vuelos[1]
     assert (giro.sta, giro.std) == (23 * 60 + 50, 24 * 60 + 15)
@@ -35,8 +35,8 @@ def test_oms_con_horas_hhmm_y_csv(tmp_path):
     ruta = tmp_path / "oms.csv"
     ruta.write_text(
         "Flight Date;Arrivals - Flt.No.;Prev Prt;STA;Departures - Flt.No.;Next Prt;STD\n"
-        "15/07/2027;FR2000;MAN;0930;FR2001;EDI;0955\n"
-        "15/07/2027;FR2002;MAN;99:99;;;\n",
+        "15/07/2027;XX2000;MAN;0930;XX2001;EDI;0955\n"
+        "15/07/2027;XX2002;MAN;99:99;;;\n",
         encoding="utf-8",
     )
     vuelos, incidencias = leer_vuelos(ruta, date(2027, 7, 15), horas_utc=False)

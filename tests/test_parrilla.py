@@ -47,9 +47,9 @@ def test_parrilla_real_medianoche_y_filas_invertidas(tmp_path):
     ws.title = "01-10"
     # Cabecera con ORIG. y PK borrados, como llegan algunas hojas reales.
     ws.append(["", "N.Vuelo", "", "Dest.", "N.Vuelo", "", "Matricula", "", "", "ETA", "STA", "STD", "Grupo"])
-    ws.append(["STN", "FR", "1", "DUB", "FR", "2", "", "", "10", None, time(9, 0), time(8, 15), "M1"])
-    ws.append(["MAN", "FR", "3", None, None, None, "", "", "20", None, time(0, 30), None, "T9"])
+    ws.append(["STN", "XX", "1", "DUB", "XX", "2", "", "", "10", None, time(9, 0), time(8, 15), "M1"])
+    ws.append(["MAN", "XX", "3", None, None, None, "", "", "20", None, time(0, 30), None, "T9"])
     wb.save(ruta)
     vuelos, grupos = leer_vuelos_parrilla(ruta, "01-10", date(2026, 10, 1))
-    assert [(v.codigo, v.sta, v.std) for v in vuelos] == [("FR1", 540, None), ("FR2", None, 495), ("FR3", 1470, None)]
-    assert grupos["FR2"] == "M1" and vuelos[0].puesto == "10"
+    assert [(v.codigo, v.sta, v.std) for v in vuelos] == [("XX1", 540, None), ("XX2", None, 495), ("XX3", 1470, None)]
+    assert grupos["XX2"] == "M1" and vuelos[0].puesto == "10"
