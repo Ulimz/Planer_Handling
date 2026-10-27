@@ -35,12 +35,36 @@ DEMO = RAIZ / "ejemplos" / "demo"
 MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre",
          "noviembre", "diciembre"]
 
-st.set_page_config(page_title="Planificador de handling", page_icon="✈️", layout="wide")
-st.title("Planificador de handling")
-st.caption("Todo se calcula en este ordenador. Los archivos no se envían a ningún sitio.")
+IMAGENES = Path(__file__).resolve().parent / "imagenes"
+NOMBRE = "AEROS-handling"
+CIAN, NARANJA = "#5CCBEF", "#F5A65B"      # colores del logo y el de "lo que piden los vuelos"
+
+st.set_page_config(page_title=NOMBRE, page_icon=str(IMAGENES / "icono.png"), layout="wide")
+st.logo(str(IMAGENES / "logo.png"), size="large")
+st.markdown(f"""
+<style>
+.block-container {{padding-top: 2.2rem;}}
+.marca {{display:flex; align-items:center; gap:1.1rem; margin-bottom:.4rem;}}
+.marca img {{width:64px; height:64px; filter: drop-shadow(0 0 14px rgba(92,203,239,.35));}}
+.marca h1 {{margin:0; padding:0; font-size:2.3rem; letter-spacing:.02em;
+            text-shadow: 0 0 18px rgba(92,203,239,.35);}}
+.marca h1 span {{color:{CIAN};}}
+.marca p {{margin:.1rem 0 0; color:#8FA6C0;}}
+[data-testid="stMetric"] {{background:#1B2A42; border:1px solid #2A3D5C; border-radius:.8rem;
+                          padding:1rem 1.2rem; box-shadow: 0 0 0 1px rgba(92,203,239,.05), 0 6px 20px rgba(0,0,0,.25);}}
+[data-testid="stMetricValue"] {{color:{CIAN};}}
+.stTabs [data-baseweb="tab-list"] {{gap:1.4rem;}}
+.stButton button[kind="primary"], .stDownloadButton button {{box-shadow: 0 0 16px rgba(92,203,239,.25);}}
+.stButton button[kind="primary"], .stDownloadButton button[kind="primary"], .stFormSubmitButton button[kind="primary"] {{color:#0E1726; font-weight:600;}}
+</style>
+<div class="marca">
+  <img src="data:image/png;base64,{__import__("base64").b64encode((IMAGENES / "icono.png").read_bytes()).decode()}">
+  <div><h1>AEROS<span>-handling</span></h1>
+  <p>Rampa y pasaje planificados a partir de los vuelos · todo se calcula en este ordenador</p></div>
+</div>""", unsafe_allow_html=True)
 demo = st.sidebar.toggle("Demo con una empresa ficticia", value=False)
 if demo:
-    st.sidebar.caption("Plantilla de 132 personas con nombres inventados y un mes de vuelos inventado con la "
+    st.sidebar.caption("Plantilla de 260 personas con código de empleado y un mes de vuelos inventado con la "
                        "forma de una operación vacacional desde Reino Unido. Los archivos ya están cargados: "
                        "solo hay que pulsar los botones.")
     st.info("Modo demo: empresa ficticia. Mes de referencia octubre de 2026, se planifica noviembre de 2026.")
@@ -189,7 +213,7 @@ with resumen_tab:
                        f"{c2_:.1f} % cubierto.")
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Vuelos en el mes", numero(sum(r.vuelos for r in resumen)))
-        c2.metric("Horas de rampa", numero(horas_s),
+        c2.metric("Horas planificadas", numero(horas_s),
                   None if diferencia is None else f"{numero(diferencia[0])} h", delta_color="inverse")
         c3.metric("Necesidad cubierta", f"{cubierto:.1f} %",
                   None if diferencia is None else f"{diferencia[2]:+.1f} puntos")
@@ -214,7 +238,7 @@ with resumen_tab:
             hora, etiqueta = minuto / 60, f"{minuto // 60 % 24:02d}:{minuto % 60:02d}"
             filas_g += [{"Hora": hora, "Franja": etiqueta, "Personas": c, "Serie": "En el cuadrante"},
                         {"Hora": hora, "Franja": etiqueta, "Personas": d, "Serie": "Piden los vuelos"}]
-        escala = alt.Scale(domain=["En el cuadrante", "Piden los vuelos"], range=["#2a78d6", "#eb6834"])
+        escala = alt.Scale(domain=["En el cuadrante", "Piden los vuelos"], range=[CIAN, NARANJA])
         fin_eje = INICIO_MAS_TEMPRANO / 60 + ultima / 4
         base = alt.Chart(alt.Data(values=filas_g)).encode(
             x=alt.X("Hora:Q", title=None, scale=alt.Scale(domain=[INICIO_MAS_TEMPRANO / 60, fin_eje], nice=False),

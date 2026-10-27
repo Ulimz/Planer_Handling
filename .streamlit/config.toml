@@ -6,3 +6,19 @@ maxUploadSize = 200
 
 [client]
 toolbarMode = "minimal"
+
+# Colores del logo de AEROS-handling
+[theme]
+base = "dark"
+primaryColor = "#5CCBEF"
+backgroundColor = "#131E30"
+secondaryBackgroundColor = "#1B2A42"
+textColor = "#E6F1FA"
+borderColor = "#2A3D5C"
+linkColor = "#5CCBEF"
+baseRadius = "0.6rem"
+showWidgetBorder = true
+
+[theme.sidebar]
+backgroundColor = "#0E1726"
+secondaryBackgroundColor = "#1B2A42"
