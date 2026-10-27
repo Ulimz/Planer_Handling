@@ -89,3 +89,21 @@ def test_contratos_parcial_se_recorta_y_completo_no(conf):
     assert jornadas["FIJO"].tramos == [(360, 600)]
     assert jornadas["PARCIAL"].minutos < 360 and jornadas["PARCIAL"].minutos >= por_nombre["PARCIAL"].jornada_minima
     assert all(d == 0 for r in ("TL", "PB/TOW", "Operario") for d in [cm.dias[0].deficit(r)])
+
+
+def test_tl_que_sobra_queda_de_refuerzo_si_tiene_coste(conf):
+    # Dos TL donde hace falta uno y un operario parcial: contando con el TL que sobra se recortaría
+    # al operario; con coste (Azul/Ryanair) el TL queda de refuerzo y el operario se mantiene.
+    filas = [_fila("TL", "TL1", 0), _fila("TL", "TL2", 0), _fila("PCP", "PARCIAL", 0, manana=(300, 660))]
+    perfiles = mensual.aprender_perfiles(filas, OCTUBRE, conf, {"PARCIAL": "TP"})
+    perfiles[2].jornada_minima = 120
+    dia = date(2026, 11, 6)
+    n = mensual.franjas_del_dia()
+    demanda = {"TL": [0] * n, "PB/TOW": [0] * n, "Operario": [0] * n}
+    for k in range(mensual._franja(300), mensual._franja(660)):
+        demanda["TL"][k] = demanda["Operario"][k] = 1
+    for contar, minutos in ((True, 120), (False, 360)):
+        jornadas = [mensual.Jornada(p, dia, [(300, 660)]) for p in perfiles]
+        mensual._recortar(jornadas, demanda, contar_tl_pb=contar)
+        assert jornadas[2].minutos == minutos
+    assert mensual.coste_tl_pb_operario(conf) > 0

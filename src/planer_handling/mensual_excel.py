@@ -2,6 +2,7 @@
 leer con el modo --cuadrante) más hojas de cobertura y de horas por persona."""
 from __future__ import annotations
 
+import calendar
 from collections import defaultdict
 
 from openpyxl import Workbook
@@ -82,17 +83,34 @@ def _hoja_cobertura(ws, cm: CuadranteMes) -> None:
 
 
 def _hoja_horas(ws, cm: CuadranteMes) -> None:
-    ws.append(["Empleado", "Función", "Patrón", "Días mes anterior", "Horas mes anterior", "Días planificados",
-               "Horas planificadas"])
+    ws.append(["Empleado", "Función", "Patrón", "Contrato", "Días mes anterior", "Horas mes anterior",
+               "Días planificados", "Horas planificadas", "Horas convenio", "Aviso"])
     dias, minutos = defaultdict(int), defaultdict(int)
     for dp in cm.dias:
         for j in dp.jornadas:
             dias[j.perfil.empleado.id] += 1
             minutos[j.perfil.empleado.id] += j.minutos
+    # Los límites del convenio son por mes entero: si se planifica solo una parte, en proporción.
+    proporcion = 0.0
+    if cm.dias:
+        d0 = cm.dias[0].dia
+        proporcion = len(cm.dias) / calendar.monthrange(d0.year, d0.month)[1]
     for p in cm.perfiles:
         e = p.empleado
-        ws.append([e.id, p.funcion, p.patron, p.dias_referencia, round(p.minutos_referencia / 60, 1),
-                   dias[e.id], round(minutos[e.id] / 60, 1)])
+        horas = round(minutos[e.id] / 60, 1)
+        limites, aviso = "", ""
+        if p.horas_mes:
+            minimo = p.horas_mes[0] * proporcion
+            maximo = p.horas_mes[1] * proporcion if len(p.horas_mes) > 1 and p.horas_mes[1] else None
+            limites = f"{minimo:.0f}-{maximo:.0f}" if maximo is not None else f"mín. {minimo:.0f}"
+            if horas < minimo:
+                aviso = "Por debajo del mínimo"
+            elif maximo is not None and horas > maximo:
+                aviso = "Por encima del máximo"
+        ws.append([e.id, p.funcion, p.patron, p.contrato, p.dias_referencia, round(p.minutos_referencia / 60, 1),
+                   dias[e.id], horas, limites, aviso])
+        if aviso:
+            ws.cell(ws.max_row, 10).fill = FALTA
     for celda in ws[1]:
         celda.font, celda.fill = NEGRITA, CABECERA
 

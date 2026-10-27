@@ -66,6 +66,7 @@ class Perfil:
     duraciones: list[int] = field(default_factory=list)   # minutos posibles; vacío = solo `duracion`
     horario_fijo: bool = False          # concreción horaria: entra siempre a su hora habitual
     jornada_minima: int = 0             # minutos por debajo de los que no se recorta su jornada
+    horas_mes: list[float] = field(default_factory=list)  # [mínimo, máximo] del convenio (aviso)
 
     def ciclo(self) -> tuple[int, int] | None:
         return ROTACIONES.get(self.patron)
@@ -192,6 +193,7 @@ def aprender_perfiles(filas: list[FilaCuadrante], dias: list[date], conf: Config
         if not p.contrato and p.duracion < 7 * 60 + 30:
             regla = reglas.get(conf.datos.get("contrato_parcial_por_defecto", ""), {})
         p.horario_fijo = bool(regla.get("horario_fijo"))
+        p.horas_mes = list(regla.get("horas_mes") or [])
         if regla.get("jornadas_h") and not p.horario_fijo:
             p.duraciones = [int(h * 60) for h in regla["jornadas_h"]]
             if len(p.duraciones) == 1:
@@ -283,10 +285,14 @@ def _opciones_inicio(fase: str, fin_anterior: int | None) -> list[int]:
 def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[Perfil], referencia: date,
                    fin_anterior: dict[str, int], dias_usados: dict[str, int], segundos: float = 10,
                    ausentes: dict[str, str] | None = None,
-                   actual: dict[str, list[tuple[int, int]]] | None = None) -> list[Jornada]:
+                   actual: dict[str, list[tuple[int, int]]] | None = None,
+                   coste_tl_pb_operario: int = 0) -> list[Jornada]:
     """Horarios del día. Con `actual` (el horario ya publicado de ese día) reorganiza: mantiene a
     cada uno en su horario salvo que haga falta moverlo para cubrir a los ausentes, y solo llama
-    a alguien que libra si no hay otra forma."""
+    a alguien que libra si no hay otra forma.
+    `coste_tl_pb_operario`: lo que cuesta cada franja en que un TL o PB que sobra hace de operario.
+    Con 0 se cuenta con ellos como un operario más; con un coste, solo si hace falta y si no
+    quedan de refuerzo."""
     modelo = cp_model.CpModel()
     n = franjas_del_dia()
     cubre: dict[str, list[list]] = {rol: [[] for _ in range(n)] for rol in PLANIFICADOS}
@@ -366,7 +372,7 @@ def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[
     deficit = []
     for k in range(n):
         tl, pb, op = (sum(cubre[r][k]) for r in ("TL", "PB/TOW", "Operario"))
-        # Un TL o un PB que sobra en esa franja puede hacer de operario.
+        # Un TL o un PB que sobra en esa franja puede hacer de operario (según la empresa, con un coste).
         extra_tl = modelo.NewIntVar(0, len(perfiles), f"xtl{k}")
         extra_pb = modelo.NewIntVar(0, len(perfiles), f"xpb{k}")
         faltas = {r: modelo.NewIntVar(0, 10 * len(perfiles), f"f{r}{k}") for r in PLANIFICADOS}
@@ -375,18 +381,23 @@ def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[
         modelo.Add(op + extra_tl + extra_pb + faltas["Operario"] >= demanda_dia["Operario"][k])
         modelo.Add(extra_tl <= tl)
         modelo.Add(extra_pb <= pb)
-        deficit += [3000 * faltas["TL"], 3000 * faltas["PB/TOW"], 1000 * faltas["Operario"]]
+        deficit += [3000 * faltas["TL"], 3000 * faltas["PB/TOW"], 1000 * faltas["Operario"],
+                    coste_tl_pb_operario * (extra_tl + extra_pb)]
         # Pista completa (también de estas variables): el optimizador parte del plan de reserva (el
         # horario publicado o el habitual) y siempre tiene una solución aunque se le acabe el tiempo.
         r_tl, r_pb, r_op = (cubre_reserva[r][k] for r in ("TL", "PB/TOW", "Operario"))
         sobra_tl, sobra_pb = max(0, r_tl - demanda_dia["TL"][k]), max(0, r_pb - demanda_dia["PB/TOW"][k])
+        hace_falta = max(0, demanda_dia["Operario"][k] - r_op)
+        usa_tl = min(sobra_tl, hace_falta)
+        usa_pb = min(sobra_pb, hace_falta - usa_tl)
         falta = {"TL": max(0, demanda_dia["TL"][k] - r_tl), "PB/TOW": max(0, demanda_dia["PB/TOW"][k] - r_pb),
-                 "Operario": max(0, demanda_dia["Operario"][k] - r_op - sobra_tl - sobra_pb)}
-        modelo.AddHint(extra_tl, sobra_tl)
-        modelo.AddHint(extra_pb, sobra_pb)
+                 "Operario": hace_falta - usa_tl - usa_pb}
+        modelo.AddHint(extra_tl, usa_tl)
+        modelo.AddHint(extra_pb, usa_pb)
         for r in PLANIFICADOS:
             modelo.AddHint(faltas[r], falta[r])
-        coste_reserva += 3000 * (falta["TL"] + falta["PB/TOW"]) + 1000 * falta["Operario"]
+        coste_reserva += (3000 * (falta["TL"] + falta["PB/TOW"]) + 1000 * falta["Operario"]
+                          + coste_tl_pb_operario * (usa_tl + usa_pb))
     modelo.Minimize(sum(deficit) + sum(coste))
 
     solver = cp_model.CpSolver()
@@ -400,19 +411,23 @@ def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[
     else:
         jornadas = [Jornada(por_id[eid], dia, tramos) for (eid, _), (x, tramos) in eleccion.items() if solver.Value(x)]
     if actual is None:
-        _recortar(jornadas, demanda_dia)
+        _recortar(jornadas, demanda_dia, contar_tl_pb=coste_tl_pb_operario == 0)
     return fijas + jornadas
 
 
-def _recortar(jornadas: list[Jornada], demanda_dia: dict[str, list[int]]) -> None:
+def _recortar(jornadas: list[Jornada], demanda_dia: dict[str, list[int]], contar_tl_pb: bool = True) -> None:
     """Acorta por los extremos las jornadas de quien tiene horas variables (parciales) mientras
-    el trozo que se quita sobre en esa franja. Así no se dan más horas de las que piden los vuelos."""
+    el trozo que se quita sobre en esa franja. Así no se dan más horas de las que piden los vuelos.
+    Sin `contar_tl_pb` no se quitan horas de operario contando con un TL o PB que sobra: ese queda
+    de refuerzo."""
     cob = cobertura(jornadas)
     n = franjas_del_dia()
 
     def puede_quitar(rol: str, k: int) -> bool:
         tl, pb, op = (cob[r][k] - (r == rol) for r in ("TL", "PB/TOW", "Operario"))
         dtl, dpb, dop = (demanda_dia[r][k] for r in ("TL", "PB/TOW", "Operario"))
+        if not contar_tl_pb and rol == "Operario" and op < dop:
+            return False
         return tl >= dtl and pb >= dpb and op + (tl - dtl) + (pb - dpb) >= dop
 
     for j in sorted(jornadas, key=lambda j: -j.minutos):
@@ -459,6 +474,13 @@ def ausentes_del_dia(ausencias: list[Ausencia], perfiles: list[Perfil], dia: dat
     return resultado
 
 
+def coste_tl_pb_operario(conf: Configuracion) -> int:
+    regla = conf.datos.get("tl_pb_como_operario", {})
+    if not regla.get("permitido", True):
+        return 10 ** 6      # en la práctica, nunca: antes se deja el hueco sin cubrir
+    return int(regla.get("coste", 0))
+
+
 def planificar_mes(vuelos_por_dia: dict[date, list[Vuelo]], perfiles: list[Perfil], referencia: date,
                    conf: Configuracion, segundos_por_dia: float = 10,
                    ausencias: list[Ausencia] | None = None, progreso=None) -> CuadranteMes:
@@ -470,7 +492,7 @@ def planificar_mes(vuelos_por_dia: dict[date, list[Vuelo]], perfiles: list[Perfi
         demanda_dia = demanda_del_dia(vuelos_por_dia[dia], conf)
         ausentes = ausentes_del_dia(ausencias or [], perfiles, dia)
         jornadas = planificar_dia(dia, demanda_dia, perfiles, referencia, fin_anterior, dias_usados,
-                                  segundos_por_dia, ausentes)
+                                  segundos_por_dia, ausentes, coste_tl_pb_operario=coste_tl_pb_operario(conf))
         fin_anterior = {j.perfil.empleado.id: j.fin for j in jornadas}
         dias_usados.update(j.perfil.empleado.id for j in jornadas)
         dias.append(DiaPlanificado(dia, len(vuelos_por_dia[dia]), demanda_dia, cobertura(jornadas), jornadas,
@@ -543,7 +565,7 @@ def reorganizar(filas: list[FilaCuadrante], dias_mes: list[date], vuelos_por_dia
                                    and fila_de[p.empleado.nombre].jornadas[dia].tramos])
             demanda_dia = {r: [min(d, c) for d, c in zip(demanda_vuelos[r], publicada[r])] for r in PLANIFICADOS}
             jornadas = planificar_dia(dia, demanda_dia, perfiles, dias_mes[0], fin_anterior, {}, segundos_por_dia,
-                                      ausentes, actual)
+                                      ausentes, actual, coste_tl_pb_operario(conf))
             nuevo = {j.perfil.empleado.id: j.tramos for j in jornadas}
             for p in perfiles:
                 eid = p.empleado.id
