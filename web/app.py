@@ -12,8 +12,11 @@ from pathlib import Path
 import altair as alt
 import streamlit as st
 
+import pagina_empresa
+
 from planer_handling.anual import rotaciones_recientes
 from planer_handling.anual_excel import exportar_anio
+from planer_handling import empresas
 from planer_handling.configuracion import Configuracion
 from planer_handling.desde_cuadrante import generar_parrilla_cuadrante
 from planer_handling.importar.ausencias import leer_ausencias
@@ -56,6 +59,7 @@ st.markdown(f"""
 .stTabs [data-baseweb="tab-list"] {{gap:1.4rem;}}
 .stButton button[kind="primary"], .stDownloadButton button {{box-shadow: 0 0 16px rgba(92,203,239,.25);}}
 .stButton button[kind="primary"], .stDownloadButton button[kind="primary"], .stFormSubmitButton button[kind="primary"] {{color:#0E1726; font-weight:600;}}
+.stButton button:disabled {{color:#6B7F99 !important; box-shadow:none;}}
 </style>
 <div class="marca">
   <img src="data:image/png;base64,{__import__("base64").b64encode((IMAGENES / "icono.png").read_bytes()).decode()}">
@@ -89,8 +93,8 @@ def archivo(etiqueta: str, tipos: list[str], clave: str, de_demo: str | None = N
 
 
 @st.cache_resource
-def configuracion(nombre: str) -> Configuracion:
-    return Configuracion.cargar(RAIZ / "config" / nombre)
+def configuracion(ruta: str, version: int = 0) -> Configuracion:
+    return Configuracion.cargar(ruta)
 
 
 def guardar(subido, carpeta: Path) -> Path:
@@ -113,15 +117,33 @@ def leer_vuelos_mes(ruta: Path, dias: list[date]) -> dict:
     return {d: v for d in dias if (v := emparejar_giros(leer_vuelos(ruta, d, conf.zona_horaria)[0]))}
 
 
-conf = configuracion("demo.yaml" if demo else "base.yaml")
+EJEMPLOS, PROPIAS = RAIZ / "config", RAIZ / "datos" / "empresas"
+perfiles = empresas.listar(EJEMPLOS, PROPIAS)
+if demo:
+    perfil = next(p for p in perfiles if p.clave == "demo")
+else:
+    if (pendiente := st.session_state.pop("perfil_pendiente", None)):
+        st.session_state["perfil_elegido"] = pendiente
+    claves = [p.clave for p in perfiles if p.clave != "demo"]
+    if st.session_state.get("perfil_elegido") not in claves:
+        st.session_state["perfil_elegido"] = "base"
+    elegido = st.sidebar.selectbox("Empresa", claves, key="perfil_elegido",
+                                   format_func=lambda c: next(p.nombre for p in perfiles if p.clave == c),
+                                   help="Reglas, turnos y contratos con los que se planifica. Se cambian en la "
+                                        "pestaña Empresa y reglas.")
+    perfil = next(p for p in perfiles if p.clave == elegido)
+conf = configuracion(str(perfil.ruta), perfil.ruta.stat().st_mtime_ns)
 almacen = Almacen(RAIZ / "datos" / ("registro_demo" if demo else "registro"))
 if demo and not almacen.plantilla():
     almacen.guardar_plantilla(leer_cuadrante(DEMO / "cuadrante_octubre_2026.xlsx", 2026))
 colores = motivos(conf)
 OCTUBRE_DEMO, NOVIEMBRE_DEMO = date(2026, 10, 1), date(2026, 11, 1)
-resumen_tab, ausencias_tab, anual_tab, vacaciones_tab, mensual_tab, diaria_tab = st.tabs(
+resumen_tab, ausencias_tab, anual_tab, vacaciones_tab, mensual_tab, diaria_tab, empresa_tab = st.tabs(
     ["Resumen", "Plantilla y ausencias", "Rotaciones del año", "Vacaciones del año", "Cuadrante del mes",
-     "Parrilla del día"])
+     "Parrilla del día", "Empresa y reglas"])
+
+with empresa_tab:
+    pagina_empresa.mostrar(perfil, perfiles, EJEMPLOS, PROPIAS)
 
 with vacaciones_tab:
     st.subheader("Reparto de las vacaciones del año por puntos")

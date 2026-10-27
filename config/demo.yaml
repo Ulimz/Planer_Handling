@@ -2,6 +2,11 @@
 # Parte de base.yaml y solo cambia lo que hay aquí.
 hereda: base.yaml
 
+empresa:
+  nombre: Empresa ficticia de la demo
+  cliente: Aerolínea XX
+  convenio: V Convenio del sector de handling (BOE-A-2022-16972)
+
 pasaje:
   activo: true
 
