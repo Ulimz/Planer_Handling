@@ -136,16 +136,20 @@ tl_pb_como_operario: {permitido: true, coste: 100}
 #  - Parciales, art. 19: con menos preaviso, horas complementarias especiales: solo para quien se ha
 #    adherido esa temporada, avisando con más de 1 hora, como mucho 20 h al mes sobre lo programado
 #    (y 15 % de la jornada anual), y voluntarias si caen en su día de descanso.
+#    En Azul están DESACTIVADAS (hay pleitos contra ese artículo, 27-10-2026): con menos de 3 días
+#    de preaviso a un parcial no se le cambia.
 #  - Tiempo completo, art. 36: las horas por ausencias imprevistas que no se pueden cubrir con otro
 #    personal son perentorias: obligatorias, +75 % o 1 h 45 min de descanso por hora.
 #  - Concreción horaria (TCC, FDC): no se les cambia el horario.
 # preaviso_horario_completo_dias: preaviso mínimo para mover el horario de un tiempo completo
-# (el convenio no lo fija; null = sin mínimo).
+# (el convenio no lo fija; en Azul son 5 días; null = sin mínimo). Con menos, solo se le puede
+# llamar como perentorias.
 cambios_publicado:
   parciales: [TP, FD, EVE]
   preaviso_complementarias_dias: 3
+  complementarias_especiales: false
   complementarias_especiales_mes_h: 20
-  preaviso_horario_completo_dias: null
+  preaviso_horario_completo_dias: 5
   texto_complementarias: "Complementarias pactadas (art. 18.5.5)"
   texto_especiales: "Complementarias especiales (art. 19)"
   texto_dia_libre: ", voluntarias en día libre"

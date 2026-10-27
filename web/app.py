@@ -296,8 +296,8 @@ with ausencias_tab:
                           min_value=dias_r[0], max_value=dias_r[-1], format="DD/MM/YYYY", key="rango")
     aviso_r = st.date_input("Día en que se avisa de los cambios", value=NOVIEMBRE_DEMO if demo else hoy,
                             format="DD/MM/YYYY", key="aviso_r_demo" if demo else "aviso_r",
-                            help="Con 3 días o más de preaviso, a un parcial se le aplica el pacto de horas "
-                                 "complementarias; con menos, horas complementarias especiales (máx. 20 h al mes).")
+                            help="Las reglas de preaviso de cada contrato están en la configuración (en Azul: "
+                                 "parciales 3 días, tiempo completo 5 días; con menos, solo perentorias).")
     con_nombres_r = st.checkbox("Mostrar nombres (si no, solo códigos)", value=True, key="nmr")
     if st.button("Reorganizar", type="primary", disabled=not (cuadrante_r and vuelos_r and len(rango) == 2)):
         with tempfile.TemporaryDirectory() as tmp:

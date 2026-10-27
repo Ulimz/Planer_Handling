@@ -567,7 +567,7 @@ def reglas_cambio(p: Perfil, preaviso: int, usadas_mes: int, conf: Configuracion
             texto = reglas.get("texto_complementarias", "Horas complementarias")
             return (COSTE_CAMBIO * 3 // 5, COSTE_IRREGULAR), texto, texto
         limite = reglas.get("complementarias_especiales_mes_h")
-        if limite is not None and usadas_mes >= limite * 60:
+        if not reglas.get("complementarias_especiales", True) or (limite is not None and usadas_mes >= limite * 60):
             return (None, None), "", ""
         texto = reglas.get("texto_especiales", "Horas complementarias especiales")
         return (COSTE_CAMBIO, COSTE_LLAMAR_LIBRE), texto, texto + reglas.get("texto_dia_libre", "")

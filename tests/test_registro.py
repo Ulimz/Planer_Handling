@@ -46,7 +46,8 @@ def test_reorganizar_cubre_a_quien_falta_moviendo_lo_minimo(conf):
 
 
 @pytest.mark.parametrize("contrato, dias_aviso, esperado", [
-    ("TP", 0, "Complementarias especiales (art. 19), voluntarias en día libre"),
+    ("TP", 0, None),                                   # sin preaviso y sin complementarias especiales
+    ("TP", 2, None),
     ("TP", 5, "Complementarias pactadas (art. 18.5.5)"),
     ("TC", 0, "Perentorias (art. 36)"),
     ("TCC", 5, None),                                  # concreción horaria: no se le llama
@@ -64,3 +65,15 @@ def test_reorganizar_segun_contrato_y_preaviso(conf, contrato, dias_aviso, esper
         assert not llamadas
     else:
         assert [(c.tipo, c.tipo_horas, c.preaviso) for c in llamadas] == [("Llamado en día libre", esperado, dias_aviso)]
+
+
+def test_complementarias_especiales_si_la_empresa_las_tiene(conf):
+    conf.datos["cambios_publicado"]["complementarias_especiales"] = True
+    test_reorganizar_segun_contrato_y_preaviso(conf, "TP", 0, "Complementarias especiales (art. 19), voluntarias en día libre")
+
+
+def test_tiempo_completo_sin_5_dias_de_preaviso_no_se_mueve(conf):
+    p = mensual.aprender_perfiles([_fila("TL", "TC1", 0)], OCTUBRE, conf, {"TC1": "TC"})[0]
+    assert mensual.reglas_cambio(p, 4, 0, conf)[0][0] is None
+    assert mensual.reglas_cambio(p, 5, 0, conf)[0][0] is not None
+    assert mensual.reglas_cambio(p, 0, 0, conf)[0][1] is not None      # llamarle: perentorias
