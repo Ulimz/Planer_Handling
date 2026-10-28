@@ -49,3 +49,14 @@ def test_sin_cabecera_reconocible(tmp_path):
     pd.DataFrame([{"A": 1}]).to_excel(ruta, index=False)
     with pytest.raises(ValueError, match="PACOTRON u OMS"):
         leer_vuelos(ruta, date(2027, 7, 15))
+
+
+def test_avion_que_pasa_la_noche_no_es_un_giro(tmp_path):
+    ruta = tmp_path / "vuelos.xlsx"
+    pd.DataFrame([
+        {"FLIGHT DATE.": "15/07/2027", "FLIGHT IN": "XX1001", "ORIG": "MAN", "STA": "09:50",
+         "FLIGHT OUT": "XX1002", "DEST": "KIR", "STD": "07:35", "STAND": "C01"},
+    ]).to_excel(ruta, index=False)
+    vuelos, _ = leer_vuelos(ruta, date(2027, 7, 15))
+    assert [(v.codigo, v.sta, v.std) for v in vuelos] == [("XX1002", None, 9 * 60 + 35),
+                                                          ("XX1001", 11 * 60 + 50, None)]
