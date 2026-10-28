@@ -107,3 +107,12 @@ def test_tl_que_sobra_queda_de_refuerzo_si_tiene_coste(conf):
         mensual._recortar(jornadas, demanda, contar_tl_pb=contar)
         assert jornadas[2].minutos == minutos
     assert mensual.coste_tl_pb_operario(conf) > 0
+
+
+def test_emparejar_giros_ignora_filas_sin_horas():
+    from datetime import date
+    from planer_handling.mensual import emparejar_giros
+    from planer_handling.modelos import Vuelo
+    vacio = Vuelo(date(2026, 7, 1), "XX1", "AAA", None, "XX2", "BBB", None)
+    giro = Vuelo(date(2026, 7, 1), "XX3", "AAA", 600, "XX4", "BBB", 660)
+    assert emparejar_giros([vacio, giro]) == [giro]
