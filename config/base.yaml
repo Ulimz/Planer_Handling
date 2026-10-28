@@ -37,7 +37,7 @@ equipo_plataforma: [TL, PB/TOW, Carretero, Cintero, Operario]
 
 # Ventana de trabajo del equipo respecto a STA/STD.
 servicio:
-  giro:          {antes_sta: 10, despues_std: 5}
+  giro:          {antes_sta: 10, despues_std: 5, suelo_maximo: 240}   # más tiempo en tierra: llegada y salida por separado
   solo_salida:   {antes_std: 50, despues_std: 5}
   solo_llegada:  {antes_sta: 10, despues_sta: 40}
   transito_entre_vuelos: 10

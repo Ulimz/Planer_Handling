@@ -9,7 +9,13 @@ def tareas_plataforma(vuelos: list[Vuelo], conf: Configuracion) -> list[Tarea]:
     s = conf.servicio
     tareas = []
     for i, v in enumerate(vuelos):
-        if v.sta is not None and v.std is not None:
+        if v.sta is not None and v.std is not None and v.std - v.sta > s["giro"].get("suelo_maximo", 240):
+            # Mucho tiempo en tierra: el equipo atiende la llegada y vuelve para la salida.
+            tareas.append(Tarea(f"P{i:03d}L", "LLEGADA", v.sta - s["solo_llegada"]["antes_sta"],
+                                v.sta + s["solo_llegada"]["despues_sta"], v))
+            tareas.append(Tarea(f"P{i:03d}S", "SALIDA", v.std - s["solo_salida"]["antes_std"],
+                                v.std + s["solo_salida"]["despues_std"], v))
+        elif v.sta is not None and v.std is not None:
             tareas.append(Tarea(f"P{i:03d}", "GIRO", v.sta - s["giro"]["antes_sta"],
                                 v.std + s["giro"]["despues_std"], v))
         elif v.std is not None:
