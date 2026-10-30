@@ -109,6 +109,7 @@ contratos:
   FD:  {nombre: Fijo discontinuo, jornadas_h: [2, 3, 4, 5, 6, 7, 8], horas_mes: [47]}
   FDC: {nombre: Fijo discontinuo con concreción horaria, horario_fijo: true}
   EVE: {nombre: Eventual, jornadas_h: [2, 3, 4, 5, 6, 7, 8]}
+  INT: {nombre: Interino, jornadas_h: [2, 3, 4, 5, 6, 7, 8]}
 # horas_mes: [mínimo, máximo] de horas al mes. Solo es un aviso en la hoja "Horas" del Excel: el
 # convenio cuenta en promedio anual, así que un mes por debajo no es por sí solo un incumplimiento.
 # Convenio de Azul Handling, con 1.712 h/año de jornada completa (art. 31):
@@ -121,6 +122,24 @@ contratos:
 # El Estatuto (art. 12) no fija mínimo para un parcial; solo exige 10 h/semana para pactar
 # horas complementarias.
 contrato_parcial_por_defecto: TP
+
+# Formación de cada persona (archivo opcional con una fila por persona: EMPLEADO, CONTRATO y una
+# columna por habilitación). Quien tiene 1 en una columna gana esas habilitaciones; quien tiene 0,
+# NO APTO o RETIRADA las pierde aunque su función se las dé. Vacío o N/A: lo que dé su función.
+#   solo_quita: la columna es un requisito (sin permiso de conducir no carretea), no da nada.
+# Así lo trae el Excel de formación de Azul (EVE, INT, FD y FTP). PBT = pushback con barra (PB),
+# TBL = pushback sin barra (TOW); para programar, los dos son PB/TOW.
+habilitaciones_por_persona:
+  columnas:
+    PCP:                {habilitaciones: [Carretero, PB/TOW, Jardinero], solo_quita: true}
+    FORMACION CINTA:    {habilitaciones: [Cintero]}
+    FORMACION CARRETEO: {habilitaciones: [Carretero]}
+    PBT:                {habilitaciones: [PB/TOW]}
+    TBL:                {habilitaciones: [PB/TOW]}
+    JAR:                {habilitaciones: [Jardinero]}
+  tiene: ["1", "SI", "X"]
+  no_tiene: ["0", "NO", "NO APTO", "RETIRADA"]
+  alias_contratos: {FTP: TP}   # FTP = fijo a tiempo parcial, el TP de este perfil
 # Un parcial cobra sus horas de contrato aunque no se las des: al recortar, su jornada no baja de
 # esta proporción de su jornada media en el mes de referencia (en noviembre de 2026 los parciales
 # hicieron de media un 80-85 % de las horas de octubre).

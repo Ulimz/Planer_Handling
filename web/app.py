@@ -18,6 +18,7 @@ from planer_handling.configuracion import Configuracion
 from planer_handling.desde_cuadrante import generar_parrilla_cuadrante
 from planer_handling.importar.ausencias import leer_ausencias
 from planer_handling.importar.contratos import leer_contratos
+from planer_handling.importar.habilitaciones import leer_habilitaciones
 from planer_handling.importar.cuadrante import leer_cuadrante
 from planer_handling.importar.parrilla_real import leer_vuelos_parrilla
 from planer_handling.importar.vuelos import leer_vuelos
@@ -467,6 +468,9 @@ with diaria_tab:
     vuelos_dia = archivo("Vuelos (Flights, PACOTRON, OMS o libro de parrillas)", ["xlsx", "xls", "csv"], "vd",
                          "vuelos_noviembre_2026.xlsx")
     hoja = st.text_input("Si es un libro de parrillas, nombre de la hoja del día (por ejemplo 15-10)", key="hj")
+    formacion = archivo("Formación de cada persona (opcional): Empleado, Contrato, PCP, cinta, carreteo, "
+                        "PBT, TBL, JAR. Nadie va a la cinta, al carreteo o al pushback sin la formación",
+                        ["xlsx"], "fm")
     con_nombres_dia = st.checkbox("Mostrar nombres (si no, solo códigos)", value=True, key="nmd")
 
     if st.button("Generar parrilla", type="primary", disabled=not (cuadrante and vuelos_dia)):
@@ -481,7 +485,9 @@ with diaria_tab:
                         vuelos, incidencias = leer_vuelos(ruta_vuelos, dia, conf.zona_horaria)
                         vuelos = emparejar_giros(vuelos)
                     parrilla = generar_parrilla_cuadrante(dia, vuelos, leer_cuadrante(ruta_cuadrante, dia.year),
-                                                          conf, incidencias, 20, almacen.ausencias())
+                                                          conf, incidencias, 20, almacen.ausencias(),
+                                                          leer_habilitaciones(guardar(formacion, tmp), conf)
+                                                          if formacion else None)
                     salida = tmp / f"parrilla_{dia.isoformat()}.xlsx"
                     exportar(parrilla, salida, conf.equipo_plataforma, con_nombres_dia)
                     tareas_p = pasaje.tareas_pasaje(vuelos, conf)
