@@ -10,6 +10,7 @@ from . import asignacion, demanda, validacion
 from .configuracion import Configuracion
 from .equipos import Reparto
 from .importar.cuadrante import FilaCuadrante
+from .importar.habilitaciones import Ficha, aplicar, clave_persona
 from .importar.vuelos import clave
 from .modelos import Empleado, Equipo, Habilitacion, Incidencia, Vuelo, hhmm
 from .planificador import Parrilla
@@ -27,7 +28,10 @@ class Tramo:
     marca: str = ""
 
 
-def empleados_desde_cuadrante(filas: list[FilaCuadrante], conf: Configuracion) -> tuple[list[Empleado], list[Incidencia]]:
+def empleados_desde_cuadrante(filas: list[FilaCuadrante], conf: Configuracion,
+                              fichas: dict[str, Ficha] | None = None) -> tuple[list[Empleado], list[Incidencia]]:
+    """`fichas`: habilitaciones de cada persona (ver importar.habilitaciones); corrigen las que da
+    su función."""
     funciones = conf.datos.get("funciones", {})
     empleados, incidencias, desconocidas = [], [], set()
     for n, fila in enumerate(filas, 1):
@@ -38,8 +42,10 @@ def empleados_desde_cuadrante(filas: list[FilaCuadrante], conf: Configuracion) -
                 incidencias.append(Incidencia("AVISO", "FUNCION_DESCONOCIDA",
                                               f"La función '{fila.funcion}' no está en config; se trata como Operario."))
             regla = {"categoria": "Operario", "habilitaciones": ["Operario"]}
+        habilitaciones = aplicar([Habilitacion(h) for h in regla["habilitaciones"]],
+                                 (fichas or {}).get(clave_persona(fila.nombre)))
         e = Empleado(id=f"C{n:03d}", categoria=regla["categoria"], contrato=fila.funcion,
-                     habilitaciones=[Habilitacion(h) for h in regla["habilitaciones"]], nombre=fila.nombre)
+                     habilitaciones=habilitaciones, nombre=fila.nombre)
         empleados.append(e)
     return empleados, incidencias
 
@@ -106,9 +112,11 @@ def formar_equipos_por_horario(tramos: list[Tramo], puestos: list[str], solape_m
 
 def generar_parrilla_cuadrante(dia: date, vuelos: list[Vuelo], filas: list[FilaCuadrante], conf: Configuracion,
                                incidencias_previas: list[Incidencia] | None = None, segundos: float = 30,
-                               ausencias: list[Ausencia] | None = None) -> Parrilla:
-    """`ausencias`: registro de bajas, vacaciones… además de los colores del cuadrante."""
-    empleados, incidencias = empleados_desde_cuadrante(filas, conf)
+                               ausencias: list[Ausencia] | None = None,
+                               fichas: dict[str, Ficha] | None = None) -> Parrilla:
+    """`ausencias`: registro de bajas, vacaciones… además de los colores del cuadrante.
+    `fichas`: habilitaciones de cada persona, si se tienen."""
+    empleados, incidencias = empleados_desde_cuadrante(filas, conf, fichas)
     tramos, por_color = tramos_del_dia(filas, empleados, dia, conf.datos.get("marcas"))
     incidencias += por_color
     ausentes = {}
