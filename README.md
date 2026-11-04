@@ -36,6 +36,18 @@ En este modo cada TL disponible abre un equipo con su horario, el resto de puest
 
 La parrilla se guarda en `salida/parrilla_AAAA-MM-DD.xlsx`. Los tiempos de servicio, turnos y rotaciones se ajustan en `config/base.yaml`.
 
+## Cada empresa con su forma de trabajar (`operativa`)
+
+No todas las empresas trabajan como Azul con Ryanair (un equipo completo que hace el vuelo entero). Un perfil puede describir en la sección `operativa` qué **recursos** tiene y qué **tareas** le pide cada vuelo a cada uno: grupos con capataz, PB sueltos que solo sacan salidas, coordinadores de vuelos que siguen varios giros a la vez, jardineras… Con eso se forman la parrilla del día (una hoja por recurso) y la demanda del cuadrante del mes (personas de cada categoría cada 15 minutos).
+
+- `puestos`: quién va en el recurso (si un puesto se repite, la parrilla los numera: Operario 1, Operario 2…).
+- `tareas`: `giro`, `solo_salida`, `solo_llegada` (el recurso hace el vuelo) o `salida`, `llegada` (una tarea en cada salida o llegada, como el PB o la jardinera), con los minutos antes y después del STA/STD.
+- `simultaneos` y `max_vuelos_dia`: vuelos a la vez y vuelos al día que lleva un mismo recurso (un coordinador).
+- `puede_hacer_de`: quién cubre otra categoría si le sobra tiempo; `coste_falta`: cuánto pesa cada hueco.
+- `categorias`, `solo_remoto`, `en_cuadrante`, `principal`, `hoja`, `codigo`: ver `src/planer_handling/operativa.py`.
+
+El ejemplo completo está en `config/ejemplo_grupos_capataz.yaml` (grupos de capataz + TRT + 3 operarios, PB aparte 10 minutos antes del STD y coordinador de vuelos; cifras orientativas). Un perfil sin `operativa`, como `base.yaml`, funciona exactamente igual que antes.
+
 ## Datos
 
 - `ejemplos/` contiene solo datos **inventados**.

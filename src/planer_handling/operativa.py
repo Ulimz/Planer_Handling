@@ -113,7 +113,7 @@ class Operativa:
         return resultado
 
 
-def _recurso(nombre: str, d: dict, n: int) -> Recurso:
+def _recurso(nombre: str, d: dict, principal: bool) -> Recurso:
     return Recurso(
         nombre=nombre,
         puestos=list(d["puestos"]),
@@ -126,12 +126,12 @@ def _recurso(nombre: str, d: dict, n: int) -> Recurso:
         solo_remoto=bool(d.get("solo_remoto", False)),
         simultaneos=max(1, int(d.get("simultaneos", 1))),
         max_vuelos_dia=d.get("max_vuelos_dia"),
-        codigo=str(d.get("codigo", "" if n == 0 else nombre[:1].upper())),
-        seccion=str(d.get("seccion", "GRUPOS" if n == 0 else nombre.upper())),
+        codigo=str(d.get("codigo", "" if principal else nombre[:1].upper())),
+        seccion=str(d.get("seccion", "GRUPOS" if principal else nombre.upper())),
         hoja=str(d.get("hoja", nombre)),
-        prefijo_tarea=str(d.get("prefijo_tarea", "P" if n == 0 else nombre[:1].upper() + str(n))),
+        prefijo_tarea=str(d.get("prefijo_tarea", "P" if principal else nombre[:3].upper())),
         tipos=dict(d.get("tipos") or {}),
-        principal=bool(d.get("principal", n == 0)),
+        principal=principal,
         nombre_puesto=dict(d.get("nombre_puesto") or {}),
         en_cuadrante=bool(d.get("en_cuadrante", True)),
         puestos_clave=list(d.get("puestos_clave") or d["puestos"][:1]),
@@ -141,7 +141,14 @@ def _recurso(nombre: str, d: dict, n: int) -> Recurso:
 def desde_configuracion(datos: dict) -> Operativa:
     op = datos.get("operativa")
     if op:
-        recursos = [_recurso(nombre, d, n) for n, (nombre, d) in enumerate(op["recursos"].items())]
+        nombres = list(op["recursos"])
+        # El principal (el que hace el vuelo) es el marcado con `principal: true`, o el primero.
+        principal = next((n for n in nombres if op["recursos"][n].get("principal")), nombres[0])
+        recursos = [_recurso(n, op["recursos"][n], n == principal) for n in nombres]
+        prefijos = [r.prefijo_tarea for r in recursos]
+        for i, r in enumerate(recursos):
+            if prefijos.count(r.prefijo_tarea) > 1:     # cada tarea necesita un identificador único
+                r.prefijo_tarea = f"{r.prefijo_tarea}{i}"
         return Operativa(recursos, {k: list(v) for k, v in (op.get("puede_hacer_de") or {}).items()},
                          dict(op.get("coste_falta") or {}))
     return _operativa_azul(datos)
