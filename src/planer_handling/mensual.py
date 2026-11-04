@@ -221,7 +221,7 @@ def emparejar_giros(vuelos: list[Vuelo], minimo: int = 25, maximo: int = 90) -> 
     entre `minimo` y `maximo` minutos después, que es como se trabaja: un solo giro."""
     llegadas = sorted((v for v in vuelos if v.sta is not None and v.std is None), key=lambda v: v.sta)
     salidas = sorted((v for v in vuelos if v.std is not None and v.sta is None), key=lambda v: v.std)
-    resto = [v for v in vuelos if (v.sta is None) == (v.std is None)]
+    resto = [v for v in vuelos if v.sta is not None and v.std is not None]   # sin ninguna hora: no se trabaja
     usadas = set()
     for llegada in llegadas:
         salida = next((s for s in salidas if id(s) not in usadas and minimo <= s.std - llegada.sta <= maximo), None)
