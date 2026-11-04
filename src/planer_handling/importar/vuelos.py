@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from dataclasses import replace
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -109,6 +110,11 @@ def _texto(valor) -> str:
     return "" if texto in ("0", "-", "nan") else texto
 
 
+# Si la salida es antes que la llegada y el avión estaría más de esto en tierra, no es un giro que
+# cruza medianoche sino un avión que pasa la noche en la base.
+SUELO_MAXIMO_NOCHE = 4 * 60
+
+
 def leer_vuelos(
     ruta: str | Path, dia: date, zona: str = "Europe/Madrid", horas_utc: bool = True
 ) -> tuple[list[Vuelo], list[Incidencia]]:
@@ -156,16 +162,25 @@ def leer_vuelos(
             incidencias.append(Incidencia("AVISO", "VUELO_INCOMPLETO", "Llegada sin origen o STA.", ref))
         if vuelo.vuelo_out and (not vuelo.destino or vuelo.std is None):
             incidencias.append(Incidencia("AVISO", "VUELO_INCOMPLETO", "Salida sin destino o STD.", ref))
+        movimientos = [vuelo]
         if vuelo.sta is not None and vuelo.std is not None and vuelo.std < vuelo.sta:
-            vuelo.std += 1440  # la salida es después de medianoche
+            if vuelo.std + 1440 - vuelo.sta <= SUELO_MAXIMO_NOCHE:
+                vuelo.std += 1440  # la salida es después de medianoche
+            else:
+                # Avión que pasa la noche: la salida de la fila es la de esta mañana y la llegada la
+                # de esta tarde. No es un giro; son dos movimientos sueltos.
+                movimientos = [replace(vuelo, vuelo_in="", origen="", sta=None),
+                               replace(vuelo, vuelo_out="", destino="", std=None)]
 
-        firma = (vuelo.vuelo_in, vuelo.origen, vuelo.sta, vuelo.vuelo_out, vuelo.destino, vuelo.std)
-        if firma in vistos:
-            incidencias.append(Incidencia("AVISO", "VUELO_DUPLICADO_ELIMINADO",
-                                          "Fila idéntica a otra; se usa una sola vez.", ref))
-            continue
-        vistos.add(firma)
-        vuelos.append(vuelo)
+        for movimiento in movimientos:
+            firma = (movimiento.vuelo_in, movimiento.origen, movimiento.sta,
+                     movimiento.vuelo_out, movimiento.destino, movimiento.std)
+            if firma in vistos:
+                incidencias.append(Incidencia("AVISO", "VUELO_DUPLICADO_ELIMINADO",
+                                              "Fila idéntica a otra; se usa una sola vez.", ref))
+                continue
+            vistos.add(firma)
+            vuelos.append(movimiento)
 
     if not vuelos:
         raise ValueError(f"No hay vuelos para el {dia:%d/%m/%Y} en {ruta.name}.")

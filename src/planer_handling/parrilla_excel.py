@@ -49,16 +49,24 @@ def exportar(parrilla: Parrilla, ruta: str | Path, puestos: list[str], con_nombr
     wb = Workbook()
     ws = wb.active
     ws.title = "Resumen"
+    principal = next((g for g in parrilla.grupos if g.recurso.principal), None)
+    otros = [g for g in parrilla.grupos if g is not principal]
     sin_asignar = [t for t in parrilla.tareas if t.id not in parrilla.asignadas]
     resumen = [
         ["Día", parrilla.dia.strftime("%d/%m/%Y")],
         ["Vuelos (filas de programación)", len(parrilla.vuelos)],
         ["Tareas de plataforma", len(parrilla.tareas)],
         ["Tareas sin equipo", len(sin_asignar)],
-        ["Tareas de jardinera", len(parrilla.tareas_jardinera)],
+    ]
+    for g in otros:
+        resumen.append([f"Tareas de {g.recurso.nombre.lower()}", len(g.tareas)])
+    resumen += [
         ["Equipos de plataforma", len(r.equipos)],
         ["Equipos incompletos", sum(1 for e in r.equipos if not e.completo)],
-        ["Jardineras", len(r.jardineras)],
+    ]
+    for g in otros:
+        resumen.append([g.recurso.hoja, len(g.equipos)])
+    resumen += [
         ["Personal en reserva", len(r.reserva)],
         ["Incidencias pendientes", sum(1 for i in parrilla.incidencias if i.gravedad == "PENDIENTE")],
         ["Avisos", sum(1 for i in parrilla.incidencias if i.gravedad == "AVISO")],
@@ -67,18 +75,8 @@ def exportar(parrilla: Parrilla, ruta: str | Path, puestos: list[str], con_nombr
         resumen.append([f"Equipos turno {turno}", sum(1 for e in r.equipos if e.turno == turno)])
     _tabla(ws, ["Dato", "Valor"], resumen)
 
-    ws = wb.create_sheet("Equipos")
-    filas = []
-    for e in r.equipos:
-        vuelos = sorted(por_recurso.get(e.codigo, []), key=lambda t: t.inicio)
-        filas.append([e.codigo, e.turno, f"{hhmm(e.inicio)}-{hhmm(e.fin)}"]
-                     + [_nombre(e.miembros[p]) for p in puestos]
-                     + [len(vuelos), ", ".join(t.vuelo.codigo for t in vuelos)])
-    _tabla(ws, ["Equipo", "Turno", "Horario"] + puestos + ["Nº vuelos", "Vuelos"], filas)
-    for fila in ws.iter_rows(min_row=2):
-        for celda in fila:
-            if celda.value == "VACANTE":
-                celda.fill = VACIO
+    _hoja_equipos(wb.create_sheet(principal.recurso.hoja if principal else "Equipos"), r.equipos, puestos,
+                  por_recurso, _nombre)
 
     ws = wb.create_sheet("Vuelos")
     filas = []
@@ -91,14 +89,23 @@ def exportar(parrilla: Parrilla, ruta: str | Path, puestos: list[str], con_nombr
     _tabla(ws, ["Vuelo in", "Origen", "STA", "Vuelo out", "Destino", "STD", "Avión", "Puesto",
                 "Servicio", "Ventana", "Equipo"], filas)
 
-    ws = wb.create_sheet("Jardineras")
-    filas = []
-    for t in sorted(parrilla.tareas_jardinera, key=lambda t: t.inicio):
-        recurso = parrilla.asignadas.get(t.id, "SIN JARDINERA")
-        conductor = next((j.miembros["Conductor"] for j in r.jardineras if j.codigo == recurso), None)
-        filas.append([t.vuelo.codigo, t.tipo.replace("JARDINERA_", "").lower(),
-                      f"{hhmm(t.inicio)}-{hhmm(t.fin)}", recurso, _nombre(conductor) if conductor or recurso != "SIN JARDINERA" else ""])
-    _tabla(ws, ["Vuelo", "Servicio", "Ventana", "Jardinera", "Conductor"], filas)
+    for g in otros:
+        rec = g.recurso
+        if len(rec.puestos) > 1:
+            _hoja_equipos(wb.create_sheet(rec.hoja), g.equipos, rec.etiquetas(), por_recurso, _nombre)
+            continue
+        # Recurso de una persona (jardinera, PB suelto, coordinador): una fila por tarea.
+        ws = wb.create_sheet(rec.hoja)
+        etiqueta = rec.etiquetas()[0]
+        sin = f"SIN {rec.nombre.upper()}"
+        filas = []
+        for t in sorted(g.tareas, key=lambda t: t.inicio):
+            recurso = parrilla.asignadas.get(t.id, sin)
+            persona = next((j.miembros[etiqueta] for j in g.equipos if j.codigo == recurso), None)
+            servicio = t.tipo.replace(f"{rec.nombre.upper()}_", "").lower()
+            filas.append([t.vuelo.codigo, servicio, f"{hhmm(t.inicio)}-{hhmm(t.fin)}", recurso,
+                          _nombre(persona) if persona or recurso != sin else ""])
+        _tabla(ws, ["Vuelo", "Servicio", "Ventana", rec.nombre, etiqueta], filas)
 
     ws = wb.create_sheet("Personal")
     filas = []
@@ -121,6 +128,20 @@ def exportar(parrilla: Parrilla, ruta: str | Path, puestos: list[str], con_nombr
     _gantt(wb.create_sheet("Gantt"), r.equipos + r.jardineras, por_recurso)
     wb.save(ruta)
     return ruta
+
+
+def _hoja_equipos(ws, equipos: list[Equipo], puestos: list[str], por_recurso: dict[str, list], _nombre) -> None:
+    filas = []
+    for e in equipos:
+        vuelos = sorted(por_recurso.get(e.codigo, []), key=lambda t: t.inicio)
+        filas.append([e.codigo, e.turno, f"{hhmm(e.inicio)}-{hhmm(e.fin)}"]
+                     + [_nombre(e.miembros.get(p)) for p in puestos]
+                     + [len(vuelos), ", ".join(t.vuelo.codigo for t in vuelos)])
+    _tabla(ws, ["Equipo", "Turno", "Horario"] + puestos + ["Nº vuelos", "Vuelos"], filas)
+    for fila in ws.iter_rows(min_row=2):
+        for celda in fila:
+            if celda.value == "VACANTE":
+                celda.fill = VACIO
 
 
 def _gantt(ws, recursos: list[Equipo], por_recurso: dict[str, list], paso: int = 15) -> None:

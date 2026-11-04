@@ -67,8 +67,9 @@ def _hoja_cuadrante(ws, cm: CuadranteMes, con_nombres: bool, colores: dict[str, 
 
 
 def _roles(cm: CuadranteMes) -> list[str]:
-    """Los de rampa siempre; los de pasaje si algún día los piden los vuelos."""
-    return ["TL", "PB/TOW", "Operario"] + [r for r in PASAJE if any(any(dp.demanda[r]) for dp in cm.dias)]
+    """Los de plataforma siempre; los de pasaje si algún día los piden los vuelos."""
+    todos = list(dict.fromkeys(r for dp in cm.dias for r in dp.demanda))
+    return [r for r in todos if r not in PASAJE] + [r for r in PASAJE if any(any(dp.demanda.get(r, [])) for dp in cm.dias)]
 
 
 def _hoja_cobertura(ws, cm: CuadranteMes) -> None:
@@ -76,7 +77,7 @@ def _hoja_cobertura(ws, cm: CuadranteMes) -> None:
     ws.append(["Día", "Vuelos", "Pico de equipos", "Personas", "Horas planificadas"]
               + [f"Horas sin cubrir {r}" for r in roles])
     for dp in cm.dias:
-        fila = [dp.dia, dp.vuelos, max(dp.demanda["TL"]), len(dp.jornadas),
+        fila = [dp.dia, dp.vuelos, max(dp.demanda[roles[0]], default=0), len(dp.jornadas),
                 round(sum(j.minutos for j in dp.jornadas) / 60, 1)]
         fila += [round(dp.deficit(r) / 60, 1) for r in roles]
         ws.append(fila)

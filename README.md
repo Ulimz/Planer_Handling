@@ -36,6 +36,18 @@ En este modo cada TL disponible abre un equipo con su horario, el resto de puest
 
 La parrilla se guarda en `salida/parrilla_AAAA-MM-DD.xlsx`. Los tiempos de servicio, turnos y rotaciones se ajustan en `config/base.yaml`.
 
+## Cada empresa con su forma de trabajar (`operativa`)
+
+No todas las empresas trabajan como Azul con Ryanair (un equipo completo que hace el vuelo entero). Un perfil puede describir en la sección `operativa` qué **recursos** tiene y qué **tareas** le pide cada vuelo a cada uno: grupos con capataz, PB sueltos que solo sacan salidas, coordinadores de vuelos que siguen varios giros a la vez, jardineras… Con eso se forman la parrilla del día (una hoja por recurso) y la demanda del cuadrante del mes (personas de cada categoría cada 15 minutos).
+
+- `puestos`: quién va en el recurso (si un puesto se repite, la parrilla los numera: Operario 1, Operario 2…).
+- `tareas`: `giro`, `solo_salida`, `solo_llegada` (el recurso hace el vuelo) o `salida`, `llegada` (una tarea en cada salida o llegada, como el PB o la jardinera), con los minutos antes y después del STA/STD.
+- `simultaneos` y `max_vuelos_dia`: vuelos a la vez y vuelos al día que lleva un mismo recurso (un coordinador).
+- `puede_hacer_de`: quién cubre otra categoría si le sobra tiempo; `coste_falta`: cuánto pesa cada hueco.
+- `categorias`, `solo_remoto`, `en_cuadrante`, `principal`, `hoja`, `codigo`: ver `src/planer_handling/operativa.py`.
+
+El ejemplo completo está en `config/ejemplo_grupos_capataz.yaml` (grupos de capataz + TRT + 3 operarios, PB aparte 10 minutos antes del STD y coordinador de vuelos; cifras orientativas). Un perfil sin `operativa`, como `base.yaml`, funciona exactamente igual que antes.
+
 ## Datos
 
 - `ejemplos/` contiene solo datos **inventados**.
@@ -72,13 +84,14 @@ Pendiente: demanda de jardineras e hipódromo. Por ahora esas personas mantienen
 
 En Windows, doble clic en `arrancar_web.bat`.
 - La primera vez instala lo necesario. Hace falta tener Python instalado.
-- Después se abre el navegador con seis pestañas:
+- Después se abre el navegador con siete pestañas:
   - **Resumen**: subes un cuadrante y los vuelos del mes y ves, cada 15 minutos, cuánta gente hay frente a la que piden los vuelos. Si subes otro cuadrante del mismo mes (por ejemplo el hecho a mano), compara horas y huecos.
   - **Plantilla y ausencias**: apuntas bajas, vacaciones, sanciones y permisos, y das el alta cuando la persona vuelve. Se guardan en `datos/registro/` (fuera de Git). Desde aquí también se reorganiza un cuadrante ya publicado: el programa cambia el horario a las menos personas posibles para cubrir a quien falta y entrega la lista de cambios (hoja Cambios del Excel).
   - **Rotaciones del año**: subes el último cuadrante (y, si quieres, el del mes anterior) y descargas el calendario del año que elijas, con cada día de mañana, de tarde o libre. La rotación continúa desde donde va cada persona; no se reinicia en enero.
   - **Vacaciones del año**: subes las solicitudes (Empleado, Función, Puntos, Antigüedad y las quincenas por orden de preferencia) y el programa reparte las vacaciones del año siguiente por puntos: elige primero quien menos puntos lleva, cada quincena suma los puntos de su temporada y en cada quincena solo puede estar fuera un cupo de cada función. Temporadas, puntos y cupos están en `vacaciones` de la configuración. El reparto se puede apuntar de golpe como ausencias.
   - **Cuadrante del mes**: subes los vuelos del mes, el cuadrante de referencia y, si quieres, las ausencias, y descargas el cuadrante. Las ausencias apuntadas se tienen en cuenta solas.
   - **Parrilla del día**: subes el cuadrante y los vuelos del día, y descargas la parrilla. Quien esté de baja o de vacaciones no entra en ningún equipo. Si la configuración tiene `pasaje` activo, la parrilla trae también la hoja Pasaje: facturación y puertas de embarque de cada vuelo, oficina, lost and found y los responsables de pasaje.
+  - **Empresa y reglas**: el perfil de la empresa sin tocar archivos: turnos y rotaciones, contratos y preavisos del convenio, ventanas de servicio de rampa, pasaje, vacaciones por puntos y funciones. Los perfiles de ejemplo (`config/`) no se sobrescriben: se guardan como empresa nueva en `datos/empresas/` (fuera de Git), solo con lo que cambia. La empresa con la que se planifica se elige en la barra lateral, y un perfil se puede descargar y cargar en otro ordenador.
 - Todo se calcula en el propio ordenador y los archivos no se envían a ningún sitio.
 - **Demo**: el interruptor "Demo con una empresa ficticia" de la barra lateral carga una empresa inventada (`ejemplos/demo/`, se rehace con `python ejemplos/generar_demo.py`): 260 personas (rampa y pasaje), contratos, cuadrante de octubre, vuelos de noviembre con la forma de una operación vacacional desde Reino Unido, y el noviembre que sale del programa y uno "a mano" para compararlos, y las solicitudes de vacaciones de 2027. Usa `config/demo.yaml`, que hereda de `base.yaml` y activa pasaje. Las ausencias de la demo se guardan aparte, en `datos/registro_demo/`.
 

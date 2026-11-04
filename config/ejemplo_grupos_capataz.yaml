@@ -1,0 +1,81 @@
+# Perfil de EJEMPLO de otra forma de trabajar en plataforma (no es Azul ni Ryanair):
+#   - Grupos de carga y descarga: un capataz, un TRT (tractorista) y tres operarios.
+#   - PB aparte del grupo, que solo saca salidas: se presenta unos 10 minutos antes del STD.
+#   - Coordinador de vuelos (despachador) que sigue todo el giro de cada vuelo. Lleva varios vuelos
+#     a la vez y tiene un máximo de vuelos al día.
+# Las cifras son orientativas (Ulises, 04-11-2026) o inventadas: cada empresa pone las suyas.
+hereda: base.yaml
+
+empresa:
+  nombre: Ejemplo de grupos con capataz y PB aparte
+  cliente: Aerolínea XX
+  convenio: V Convenio del sector de handling (BOE-A-2022-16972)
+
+turnos:
+  CM: {inicio: "04:30", fin: "13:30"}   # coordinador de mañana, 9 h (inventado)
+  CT: {inicio: "13:00", fin: "22:00"}   # coordinador de tarde, 9 h (inventado)
+  CN: {inicio: "16:00", fin: "01:00"}   # coordinador de cierre, 9 h (inventado)
+
+operativa:
+  # Los recursos se forman en este orden: quien no entra en uno puede entrar en el siguiente.
+  # Primero los más escasos (PB y coordinadores), para que no se los lleve un grupo como operarios.
+  recursos:
+    Pushback:
+      puestos: [PB/TOW]
+      turnos: [M, I, T, N]
+      transito: 5
+      codigo: P                # MP01, TP01…
+      tareas:
+        salida: {antes_std: 10, despues_std: 5}
+    Coordinador:
+      puestos: [Coordinador]
+      turnos: [CM, CT, CN]
+      transito: 0
+      codigo: C
+      simultaneos: 3           # vuelos a la vez que sigue un coordinador (inventado)
+      max_vuelos_dia: 14       # vuelos que puede llevar en su jornada (inventado)
+      tareas:
+        giro:         {antes_sta: 15, despues_std: 5}
+        solo_salida:  {antes_std: 60, despues_std: 5}
+        solo_llegada: {antes_sta: 15, despues_sta: 40}
+    Grupo:
+      principal: true          # el que hace el vuelo: sus equipos son los de la parrilla
+      puestos: [Capataz, TRT, Operario, Operario, Operario]
+      turnos: [M, I, T, N]
+      transito: 10
+      hoja: Grupos
+      puestos_clave: [Capataz]
+      tareas:
+        giro:         {antes_sta: 10, despues_std: 5}
+        solo_salida:  {antes_std: 50, despues_std: 5}
+        solo_llegada: {antes_sta: 10, despues_sta: 40}
+    Jardinera:
+      puestos: [Conductor]
+      categorias: [Jardinero]  # solo conductores de jardinera
+      solo_remoto: true
+      turnos: [M, I, T, N]
+      transito: 5
+      codigo: J
+      en_cuadrante: false      # mantienen su horario habitual en el cuadrante del mes
+      tareas:
+        llegada: {desde_sta: 0, hasta_sta: 20}
+        salida:  {antes_std: 40, hasta_antes_std: 15}
+  # Quien sobra en una franja puede cubrir otro puesto (Ulises: el capataz y el PB pueden ayudar
+  # en el grupo). Se usa solo si hace falta (coste en `tl_pb_como_operario`).
+  puede_hacer_de:
+    Operario: [Capataz, PB/TOW]
+  # Peso de cada franja sin cubrir al hacer el cuadrante: sin capataz, PB o coordinador no sale el vuelo.
+  coste_falta: {Capataz: 3000, PB/TOW: 3000, Coordinador: 3000, TRT: 2000, Operario: 1000}
+
+# En este ejemplo no hay mandos intermedios ni hipódromo planificados aparte.
+turnos_mandos: []
+turnos_hipodromo: []
+
+# Funciones del cuadrante -> categoría y puestos que puede cubrir.
+funciones:
+  CAP:   {categoria: Capataz,     habilitaciones: [Capataz, Operario]}
+  TRT:   {categoria: TRT,         habilitaciones: [TRT, Operario]}
+  OPE:   {categoria: Operario,    habilitaciones: [Operario]}
+  PB:    {categoria: PB/TOW,      habilitaciones: [PB/TOW, Operario]}
+  COORD: {categoria: Coordinador, habilitaciones: [Coordinador]}
+  JAR:   {categoria: Jardinero,   habilitaciones: [Jardinero]}

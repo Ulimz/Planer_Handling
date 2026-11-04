@@ -12,12 +12,16 @@ from pathlib import Path
 import altair as alt
 import streamlit as st
 
+import pagina_empresa
+
 from planer_handling.anual import rotaciones_recientes
 from planer_handling.anual_excel import exportar_anio
+from planer_handling import empresas
 from planer_handling.configuracion import Configuracion
 from planer_handling.desde_cuadrante import generar_parrilla_cuadrante
 from planer_handling.importar.ausencias import leer_ausencias
 from planer_handling.importar.contratos import leer_contratos
+from planer_handling.importar.habilitaciones import leer_habilitaciones
 from planer_handling.importar.cuadrante import leer_cuadrante
 from planer_handling.importar.parrilla_real import leer_vuelos_parrilla
 from planer_handling.importar.vuelos import leer_vuelos
@@ -56,6 +60,7 @@ st.markdown(f"""
 .stTabs [data-baseweb="tab-list"] {{gap:1.4rem;}}
 .stButton button[kind="primary"], .stDownloadButton button {{box-shadow: 0 0 16px rgba(92,203,239,.25);}}
 .stButton button[kind="primary"], .stDownloadButton button[kind="primary"], .stFormSubmitButton button[kind="primary"] {{color:#0E1726; font-weight:600;}}
+.stButton button:disabled {{color:#6B7F99 !important; box-shadow:none;}}
 </style>
 <div class="marca">
   <img src="data:image/png;base64,{__import__("base64").b64encode((IMAGENES / "icono.png").read_bytes()).decode()}">
@@ -89,8 +94,8 @@ def archivo(etiqueta: str, tipos: list[str], clave: str, de_demo: str | None = N
 
 
 @st.cache_resource
-def configuracion(nombre: str) -> Configuracion:
-    return Configuracion.cargar(RAIZ / "config" / nombre)
+def configuracion(ruta: str, version: int = 0) -> Configuracion:
+    return Configuracion.cargar(ruta)
 
 
 def guardar(subido, carpeta: Path) -> Path:
@@ -113,15 +118,33 @@ def leer_vuelos_mes(ruta: Path, dias: list[date]) -> dict:
     return {d: v for d in dias if (v := emparejar_giros(leer_vuelos(ruta, d, conf.zona_horaria)[0]))}
 
 
-conf = configuracion("demo.yaml" if demo else "base.yaml")
+EJEMPLOS, PROPIAS = RAIZ / "config", RAIZ / "datos" / "empresas"
+perfiles = empresas.listar(EJEMPLOS, PROPIAS)
+if demo:
+    perfil = next(p for p in perfiles if p.clave == "demo")
+else:
+    if (pendiente := st.session_state.pop("perfil_pendiente", None)):
+        st.session_state["perfil_elegido"] = pendiente
+    claves = [p.clave for p in perfiles if p.clave != "demo"]
+    if st.session_state.get("perfil_elegido") not in claves:
+        st.session_state["perfil_elegido"] = "base"
+    elegido = st.sidebar.selectbox("Empresa", claves, key="perfil_elegido",
+                                   format_func=lambda c: next(p.nombre for p in perfiles if p.clave == c),
+                                   help="Reglas, turnos y contratos con los que se planifica. Se cambian en la "
+                                        "pestaña Empresa y reglas.")
+    perfil = next(p for p in perfiles if p.clave == elegido)
+conf = configuracion(str(perfil.ruta), perfil.ruta.stat().st_mtime_ns)
 almacen = Almacen(RAIZ / "datos" / ("registro_demo" if demo else "registro"))
 if demo and not almacen.plantilla():
     almacen.guardar_plantilla(leer_cuadrante(DEMO / "cuadrante_octubre_2026.xlsx", 2026))
 colores = motivos(conf)
 OCTUBRE_DEMO, NOVIEMBRE_DEMO = date(2026, 10, 1), date(2026, 11, 1)
-resumen_tab, ausencias_tab, anual_tab, vacaciones_tab, mensual_tab, diaria_tab = st.tabs(
+resumen_tab, ausencias_tab, anual_tab, vacaciones_tab, mensual_tab, diaria_tab, empresa_tab = st.tabs(
     ["Resumen", "Plantilla y ausencias", "Rotaciones del año", "Vacaciones del año", "Cuadrante del mes",
-     "Parrilla del día"])
+     "Parrilla del día", "Empresa y reglas"])
+
+with empresa_tab:
+    pagina_empresa.mostrar(perfil, perfiles, EJEMPLOS, PROPIAS)
 
 with vacaciones_tab:
     st.subheader("Reparto de las vacaciones del año por puntos")
@@ -219,13 +242,15 @@ with resumen_tab:
                   None if diferencia is None else f"{diferencia[2]:+.1f} puntos")
         c4.metric("Horas sin cubrir", numero(sin_cubrir),
                   None if diferencia is None else f"{numero(diferencia[1])} h", delta_color="inverse")
-        st.caption("Las horas sin cubrir ya cuentan que un TL o PB que sobra puede hacer de operario: "
-                   f"lo hace {sum(r.tl_pb_como_operario for r in resumen):,.0f} horas en el mes.".replace(",", "."))
+        st.caption("Las horas sin cubrir ya cuentan que quien sobra puede cubrir otro puesto (en Azul, un TL o PB "
+                   f"hace de operario): pasa {sum(r.tl_pb_como_operario for r in resumen):,.0f} horas en el mes.".replace(",", "."))
 
         c1, c2 = st.columns([2, 1])
         dia_s = c1.select_slider("Día", [r.dia for r in resumen], format_func=lambda d: f"{d:%d/%m}", key="dia_s")
-        roles_s = ["Operario", "TL", "PB/TOW"] + [r for r in ("Pasaje", "Responsable pasaje")
-                                                  if any(any(x.plan.demanda[r]) for x in resumen)]
+        pasaje_s = ("Pasaje", "Responsable pasaje")
+        plataforma_s = [r for r in resumen[0].plan.demanda if r not in pasaje_s]
+        roles_s = sorted(plataforma_s, key=lambda r: r != "Operario") + [
+            r for r in pasaje_s if any(any(x.plan.demanda.get(r, [])) for x in resumen)]
         rol = c2.radio("Puesto", roles_s, horizontal=True, key="rol_s")
         plan = next(r for r in resumen if r.dia == dia_s).plan
         # Las franjas empiezan a las 04:00 y pueden pasar de medianoche: el eje va en horas desde las 00:00
@@ -467,6 +492,9 @@ with diaria_tab:
     vuelos_dia = archivo("Vuelos (Flights, PACOTRON, OMS o libro de parrillas)", ["xlsx", "xls", "csv"], "vd",
                          "vuelos_noviembre_2026.xlsx")
     hoja = st.text_input("Si es un libro de parrillas, nombre de la hoja del día (por ejemplo 15-10)", key="hj")
+    formacion = archivo("Formación de cada persona (opcional): Empleado, Contrato, PCP, cinta, carreteo, "
+                        "PBT, TBL, JAR. Nadie va a la cinta, al carreteo o al pushback sin la formación",
+                        ["xlsx"], "fm")
     con_nombres_dia = st.checkbox("Mostrar nombres (si no, solo códigos)", value=True, key="nmd")
 
     if st.button("Generar parrilla", type="primary", disabled=not (cuadrante and vuelos_dia)):
@@ -481,7 +509,9 @@ with diaria_tab:
                         vuelos, incidencias = leer_vuelos(ruta_vuelos, dia, conf.zona_horaria)
                         vuelos = emparejar_giros(vuelos)
                     parrilla = generar_parrilla_cuadrante(dia, vuelos, leer_cuadrante(ruta_cuadrante, dia.year),
-                                                          conf, incidencias, 20, almacen.ausencias())
+                                                          conf, incidencias, 20, almacen.ausencias(),
+                                                          leer_habilitaciones(guardar(formacion, tmp), conf)
+                                                          if formacion else None)
                     salida = tmp / f"parrilla_{dia.isoformat()}.xlsx"
                     exportar(parrilla, salida, conf.equipo_plataforma, con_nombres_dia)
                     tareas_p = pasaje.tareas_pasaje(vuelos, conf)
