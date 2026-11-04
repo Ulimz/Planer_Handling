@@ -6,19 +6,19 @@ from datetime import date
 
 from .configuracion import Configuracion, Turno
 from .modelos import Empleado, Equipo, Incidencia
-
-CATEGORIAS_SIN_EQUIPO = {"Jardinero", "Hipodromo", "Mando intermedio"}
+from .operativa import Operativa, Recurso
 
 
 @dataclass
 class Reparto:
-    equipos: list[Equipo] = field(default_factory=list)
-    jardineras: list[Equipo] = field(default_factory=list)
+    equipos: list[Equipo] = field(default_factory=list)       # los del recurso principal
+    jardineras: list[Equipo] = field(default_factory=list)    # los del resto de recursos
     hipodromo: list[Equipo] = field(default_factory=list)
     mandos: list[Equipo] = field(default_factory=list)
     parciales: list[Equipo] = field(default_factory=list)
     reserva: list[Empleado] = field(default_factory=list)
     incidencias: list[Incidencia] = field(default_factory=list)
+    por_recurso: dict[str, list[Equipo]] = field(default_factory=dict)   # nombre del recurso -> equipos
 
 
 def _habilitaciones_vigentes(e: Empleado, dia: date) -> int:
@@ -26,10 +26,14 @@ def _habilitaciones_vigentes(e: Empleado, dia: date) -> int:
 
 
 def formar_equipos(personal: list[Empleado], necesarios: dict[str, int], turnos: dict[str, Turno],
-                   puestos: list[str], dia: date) -> tuple[list[Equipo], list[Empleado], list[Incidencia]]:
+                   puestos: list[str], dia: date, etiquetas: list[str] | None = None, letra: str = "",
+                   seccion: str = "GRUPOS") -> tuple[list[Equipo], list[Empleado], list[Incidencia]]:
     """Forma `necesarios[turno]` equipos por turno. Cada puesto se cubre con quien tenga la
     habilitación vigente, prefiriendo a quien la tiene como categoría principal y reservando
-    a los más polivalentes para los puestos que queden."""
+    a los más polivalentes para los puestos que queden.
+    `etiquetas`: nombre de cada puesto en el equipo (si un puesto se repite: Operario 1, Operario 2…).
+    `letra`: va en el código del equipo, tras el turno (MP01 para un PB suelto)."""
+    etiquetas = etiquetas or puestos
     # Se completan los equipos uno a uno, alternando turnos (M01, T01, N01, M02...), para que
     # si falta personal salgan menos equipos completos y no muchos equipos a medias.
     orden = []
@@ -37,47 +41,91 @@ def formar_equipos(personal: list[Empleado], necesarios: dict[str, int], turnos:
         for codigo, cantidad in necesarios.items():
             if n <= cantidad:
                 t = turnos[codigo]
-                orden.append(Equipo(f"{codigo}{n:02d}", codigo, t.inicio, t.fin, "GRUPOS", {p: None for p in puestos}))
+                orden.append(Equipo(f"{codigo}{letra}{n:02d}", codigo, t.inicio, t.fin, seccion,
+                                    {p: None for p in etiquetas}))
     libres = list(personal)
     incidencias: list[Incidencia] = []
     for equipo in orden:
-        for puesto in puestos:
+        for puesto, etiqueta in zip(puestos, etiquetas):
             candidatos = [e for e in libres if e.habilitado(puesto, dia)]
             if not candidatos:
                 continue  # queda VACANTE; la validación lo señala como EQUIPO_INCOMPLETO
             elegido = min(candidatos, key=lambda e: (e.categoria != puesto, _habilitaciones_vigentes(e, dia), e.id))
-            equipo.miembros[puesto] = elegido
+            equipo.miembros[etiqueta] = elegido
             libres.remove(elegido)
     equipos = sorted(orden, key=lambda e: (list(necesarios).index(e.turno), e.codigo))
     return equipos, libres, incidencias
 
 
-def repartir(disponibles: list[Empleado], necesarios_plataforma: dict[str, int],
-             necesarios_jardineras: dict[str, int], salidas_por_turno: dict[str, int],
-             conf: Configuracion, dia: date) -> Reparto:
+def _por_orden_de_codigo(recurso: Recurso, personal: list[Empleado], necesarios: dict[str, int],
+                         turnos: dict[str, Turno]) -> tuple[list[Equipo], list[Empleado], list[Incidencia]]:
+    """Un recurso de una persona de cierta categoría (la jardinera de Azul): se cubre por orden de
+    código, turno a turno."""
+    libres = sorted(personal, key=lambda e: e.id)
+    equipos, incidencias = [], []
+    puesto = recurso.etiquetas()[0]
+    for codigo, cantidad in necesarios.items():
+        t = turnos[codigo]
+        for n in range(1, cantidad + 1):
+            persona = libres.pop(0) if libres else None
+            nombre = f"{codigo}{recurso.codigo}{n:02d}"
+            if persona is None:
+                incidencias.append(Incidencia("PENDIENTE", f"{recurso.nombre.upper()}_SIN_{puesto.upper()}",
+                                              f"Falta {puesto.lower()} para la {recurso.nombre.lower()} {nombre}."))
+            equipos.append(Equipo(nombre, codigo, t.inicio, t.fin, recurso.seccion, {puesto: persona}))
+    return equipos, libres, incidencias
+
+
+def categorias_reservadas(op: Operativa, conf: Configuracion) -> set[str]:
+    """Categorías que no entran en un recurso salvo que este las pida: las que otros recursos
+    piden expresamente y las de los colectivos que se planifican aparte (hipódromo y mandos)."""
+    reservadas = {c for r in op.recursos for c in r.categorias}
+    if conf.datos.get("turnos_hipodromo"):
+        reservadas.add("Hipodromo")
+    if conf.datos.get("turnos_mandos"):
+        reservadas.add("Mando intermedio")
+    return reservadas
+
+
+def repartir(disponibles: list[Empleado], necesarios: dict[str, dict[str, int]],
+             salidas_por_turno: dict[str, int], conf: Configuracion, dia: date) -> Reparto:
+    """`necesarios`: nombre del recurso -> {turno: cuántos}. Los recursos se forman en el orden del
+    perfil; quien no entra en uno puede entrar en el siguiente."""
     turnos = conf.turnos
+    op = conf.operativa
     reparto = Reparto()
     parciales = [e for e in disponibles if e.contrato == "Tiempo parcial"]
     completos = [e for e in disponibles if e not in parciales]
+    reservadas = categorias_reservadas(op, conf)
 
-    plataforma = [e for e in completos if e.categoria not in CATEGORIAS_SIN_EQUIPO]
-    reparto.equipos, sobrantes, inc = formar_equipos(plataforma, necesarios_plataforma, turnos,
-                                                     conf.equipo_plataforma, dia)
-    reparto.incidencias += inc
-    reparto.reserva = sobrantes
-
-    # Jardineras: un conductor por recurso.
-    conductores = sorted((e for e in completos if e.categoria == "Jardinero"), key=lambda e: e.id)
-    for codigo, cantidad in necesarios_jardineras.items():
-        t = turnos[codigo]
-        for n in range(1, cantidad + 1):
-            conductor = conductores.pop(0) if conductores else None
-            if conductor is None:
-                reparto.incidencias.append(Incidencia("PENDIENTE", "JARDINERA_SIN_CONDUCTOR",
-                                                      f"Falta conductor para la jardinera {codigo}J{n:02d}."))
-            reparto.jardineras.append(Equipo(f"{codigo}J{n:02d}", codigo, t.inicio, t.fin, "JARDINERAS",
-                                             {"Conductor": conductor}))
-    reparto.reserva += conductores
+    libres = list(completos)
+    sobrantes: list[Empleado] = []
+    for recurso in op.recursos:
+        if recurso.categorias:
+            personal = [e for e in libres if e.categoria in recurso.categorias]
+        else:
+            fuera = reservadas | set(recurso.excluir_categorias)
+            personal = [e for e in libres if e.categoria not in fuera]
+        libres = [e for e in libres if e not in personal]
+        if recurso.por_orden_de_codigo:
+            equipos, resto, inc = _por_orden_de_codigo(recurso, personal, necesarios.get(recurso.nombre, {}), turnos)
+        else:
+            equipos, resto, inc = formar_equipos(personal, necesarios.get(recurso.nombre, {}), turnos,
+                                                 recurso.puestos, dia, recurso.etiquetas(), recurso.codigo,
+                                                 recurso.seccion)
+        reparto.por_recurso[recurso.nombre] = equipos
+        reparto.incidencias += inc
+        if recurso is op.principal:
+            reparto.equipos = equipos
+        else:
+            reparto.jardineras += equipos
+        # Quien sobra de este recurso puede entrar en el siguiente; al final queda de reserva.
+        if recurso.por_orden_de_codigo:
+            sobrantes += resto
+        else:
+            libres = resto + libres
+    aparte = reservadas - {c for r in op.recursos for c in r.categorias}   # hipódromo y mandos
+    reparto.reserva = [e for e in libres if e.categoria not in aparte] + sobrantes
 
     # Hipódromo: personal repartido según las salidas de cada turno.
     hipodromo = sorted((e for e in completos if e.categoria == "Hipodromo"), key=lambda e: e.id)
@@ -93,18 +141,18 @@ def repartir(disponibles: list[Empleado], necesarios_plataforma: dict[str, int],
                                         {f"Operario {n}": e for n, e in enumerate(grupo, 1)}))
 
     # Mandos intermedios: se alternan entre los turnos de mando.
-    mandos = sorted((e for e in completos if e.categoria == "Mando intermedio"), key=lambda e: e.id)
     turnos_mando = conf.turnos_de("mandos")
+    mandos = sorted((e for e in completos if e.categoria == "Mando intermedio"), key=lambda e: e.id) if turnos_mando else []
     for i, e in enumerate(mandos):
         t = turnos_mando[i % len(turnos_mando)]
         reparto.mandos.append(Equipo(f"{t.codigo}{i // len(turnos_mando) + 1:02d}", t.codigo, t.inicio, t.fin,
                                      "MANDOS", {"Mando": e}))
-    if not mandos:
+    if turnos_mando and not mandos:
         reparto.incidencias.append(Incidencia("PENDIENTE", "SIN_MANDO", "Ningún mando intermedio disponible."))
 
     # Parciales: refuerzo en los bancos de primera hora y de tarde.
     turnos_parc = conf.turnos_de("parciales")
-    for i, e in enumerate(sorted(parciales, key=lambda e: e.id)):
+    for i, e in enumerate(sorted(parciales, key=lambda e: e.id) if turnos_parc else []):
         t = turnos_parc[i % len(turnos_parc)]
         reparto.parciales.append(Equipo(f"{t.codigo}-{e.id}", t.codigo, t.inicio, t.fin, "REFUERZO",
                                         {e.categoria: e}))

@@ -9,10 +9,11 @@ PENALIZACION_SIN_ASIGNAR = 10**7
 PENALIZACION_EQUIPO_USADO = 3000  # mayor que cualquier carga máxima (2 × 1440 min)
 
 
-def dimensionar(tareas: list[Tarea], turnos, transito: int, paso: int = 15) -> dict[str, int]:
+def dimensionar(tareas: list[Tarea], turnos, transito: int, paso: int = 15, simultaneos: int = 1) -> dict[str, int]:
     """Mínimo número de recursos por turno. Cada tarea se reparte a un turno que la contenga entera
     y, en cada franja de `paso` minutos, cada turno necesita tantos recursos como tareas suyas
-    coinciden en ella. Las tareas que no caben en ningún turno se ignoran aquí (las señala la validación)."""
+    coinciden en ella (o la parte que toca si un recurso lleva `simultaneos` tareas a la vez).
+    Las tareas que no caben en ningún turno se ignoran aquí (las señala la validación)."""
     if not tareas:
         return {t.codigo: 0 for t in turnos}
     modelo = cp_model.CpModel()
@@ -34,7 +35,7 @@ def dimensionar(tareas: list[Tarea], turnos, transito: int, paso: int = 15) -> d
         for t in turnos:
             suyas = [eleccion[a.id, t.codigo] for a in activas if (a.id, t.codigo) in eleccion]
             if suyas:
-                modelo.Add(n[t.codigo] >= sum(suyas))
+                modelo.Add(simultaneos * n[t.codigo] >= sum(suyas))
     modelo.Minimize(sum(n.values()))
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = 20
@@ -45,13 +46,16 @@ def dimensionar(tareas: list[Tarea], turnos, transito: int, paso: int = 15) -> d
 
 
 def asignar(tareas: list[Tarea], recursos: list, transito: int, segundos: float = 30,
-            minimizar_recursos: bool = False) -> dict[str, str]:
+            minimizar_recursos: bool = False, simultaneos: int = 1,
+            max_tareas: int | None = None) -> dict[str, str]:
     """Devuelve {id_tarea: codigo_recurso}. Las tareas que no caben quedan fuera del resultado.
 
     Cada recurso necesita `inicio`, `fin` y `codigo`. Un recurso no puede tener dos tareas
     a la vez y entre una tarea y la siguiente deja `transito` minutos.
     Con `minimizar_recursos`, antes de repartir la carga usa los menos recursos posibles
     (los que sobran quedan de refuerzo).
+    `simultaneos`: tareas a la vez que puede llevar un recurso (un coordinador con varios vuelos).
+    `max_tareas`: tareas que puede llevar un recurso en el día, si hay límite.
     """
     modelo = cp_model.CpModel()
     x: dict[tuple[str, str], cp_model.IntVar] = {}
@@ -71,7 +75,15 @@ def asignar(tareas: list[Tarea], recursos: list, transito: int, segundos: float 
         modelo.Add(sum(opciones) <= 1)
         sin_asignar.append(1 - sum(opciones))
     for lista in intervalos.values():
-        modelo.AddNoOverlap(lista)
+        if simultaneos == 1:
+            modelo.AddNoOverlap(lista)
+        elif lista:
+            modelo.AddCumulative(lista, [1] * len(lista), simultaneos)
+    if max_tareas is not None:
+        for r in recursos:
+            suyas = [v for (_, rcod), v in x.items() if rcod == r.codigo]
+            if suyas:
+                modelo.Add(sum(suyas) <= max_tareas)
 
     # Repartir la carga: minimizar los minutos del recurso más cargado.
     carga_max = modelo.NewIntVar(0, 2 * 1440, "carga_max")

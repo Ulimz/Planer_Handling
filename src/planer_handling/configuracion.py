@@ -67,10 +67,23 @@ class Configuracion:
 
     def turnos_de(self, colectivo: str) -> list[Turno]:
         todos = self.turnos
-        return [todos[c] for c in self.datos[f"turnos_{colectivo}"]]
+        return [todos[c] for c in self.datos.get(f"turnos_{colectivo}") or []]
+
+    def turnos_por_codigo(self, codigos: list[str]) -> list[Turno]:
+        todos = self.turnos
+        return [todos[c] for c in codigos]
+
+    @property
+    def operativa(self):
+        """Recursos de plataforma y tareas de cada vuelo (ver `operativa.py`)."""
+        from .operativa import desde_configuracion
+        return desde_configuracion(self.datos)
 
     @property
     def equipo_plataforma(self) -> list[str]:
+        """Puestos del recurso principal (en Azul, el equipo de plataforma)."""
+        if "operativa" in self.datos:
+            return self.operativa.principal.etiquetas()
         return self.datos["equipo_plataforma"]
 
     @property

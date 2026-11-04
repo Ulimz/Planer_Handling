@@ -6,14 +6,14 @@ from dataclasses import dataclass
 from datetime import date
 from typing import TYPE_CHECKING
 
-from . import asignacion, demanda, validacion
 from .configuracion import Configuracion
 from .equipos import Reparto
 from .importar.cuadrante import FilaCuadrante
 from .importar.habilitaciones import Ficha, aplicar, clave_persona
 from .importar.vuelos import clave
 from .modelos import Empleado, Equipo, Habilitacion, Incidencia, Vuelo, hhmm
-from .planificador import Parrilla
+from .operativa import tareas_de
+from .planificador import GrupoParrilla, Parrilla, asignar_grupos, parrilla
 
 if TYPE_CHECKING:
     from .mensual import Ausencia
@@ -73,25 +73,29 @@ def tramos_del_dia(filas: list[FilaCuadrante], empleados: list[Empleado], dia: d
 
 
 def formar_equipos_por_horario(tramos: list[Tramo], puestos: list[str], solape_minimo: int,
-                               dia: date) -> tuple[list[Equipo], list[Tramo]]:
-    """Cada TL disponible abre un equipo con su horario; el resto de puestos se cubre con quien
-    más coincide con ese horario (al menos `solape_minimo` minutos)."""
+                               dia: date, etiquetas: list[str] | None = None, jefe: str | None = None,
+                               letra: str = "", seccion: str = "GRUPOS") -> tuple[list[Equipo], list[Tramo]]:
+    """Cada persona de la categoría `jefe` (por defecto, la del primer puesto: el TL en Azul) abre un
+    equipo con su horario; el resto de puestos se cubre con quien más coincide con ese horario (al
+    menos `solape_minimo` minutos)."""
+    etiquetas = etiquetas or puestos
+    jefe = jefe or puestos[0]
     libres = sorted(tramos, key=lambda t: (t.inicio, t.fin, t.empleado.id))
-    jefes = [t for t in libres if t.empleado.categoria == "TL"]
+    jefes = [t for t in libres if t.empleado.categoria == jefe]
     equipos = []
-    for jefe in jefes:
-        if jefe not in libres:
+    for tramo_jefe in jefes:
+        if tramo_jefe not in libres:
             continue
-        libres.remove(jefe)
-        inicio, fin = jefe.inicio, jefe.fin
-        miembros: dict[str, Empleado | None] = {puestos[0]: jefe.empleado}
-        for puesto in puestos[1:]:
-            candidatos = [t for t in libres if t.empleado.categoria != "TL"   # cada TL abre su propio equipo
-                          and t.empleado.habilitado(puesto, dia) and t.empleado.id != jefe.empleado.id
+        libres.remove(tramo_jefe)
+        inicio, fin = tramo_jefe.inicio, tramo_jefe.fin
+        miembros: dict[str, Empleado | None] = {etiquetas[0]: tramo_jefe.empleado}
+        for puesto, etiqueta in zip(puestos[1:], etiquetas[1:]):
+            candidatos = [t for t in libres if t.empleado.categoria != jefe   # cada jefe abre su propio equipo
+                          and t.empleado.habilitado(puesto, dia) and t.empleado.id != tramo_jefe.empleado.id
                           and min(fin, t.fin) - max(inicio, t.inicio) >= solape_minimo
                           and all(m is None or m.id != t.empleado.id for m in miembros.values())]
             if not candidatos:
-                miembros[puesto] = None
+                miembros[etiqueta] = None
                 continue
             elegido = min(candidatos, key=lambda t: (
                 -(min(fin, t.fin) - max(inicio, t.inicio)),        # más coincidencia de horario
@@ -99,14 +103,14 @@ def formar_equipos_por_horario(tramos: list[Tramo], puestos: list[str], solape_m
                 len(t.empleado.habilitaciones),                     # reservar a los polivalentes
                 t.empleado.id))
             libres.remove(elegido)
-            miembros[puesto] = elegido.empleado
+            miembros[etiqueta] = elegido.empleado
         turno = "M" if inicio < 12 * 60 else "T"
-        equipos.append(Equipo("", turno, inicio, fin, "GRUPOS", miembros))
+        equipos.append(Equipo("", turno, inicio, fin, seccion, miembros))
     equipos.sort(key=lambda e: (e.inicio, e.fin))
     contador = {"M": 0, "T": 0}
     for e in equipos:
         contador[e.turno] += 1
-        e.codigo = f"{e.turno}{contador[e.turno]}"
+        e.codigo = f"{e.turno}{letra}{contador[e.turno]}"
     return equipos, libres
 
 
@@ -132,34 +136,43 @@ def generar_parrilla_cuadrante(dia: date, vuelos: list[Vuelo], filas: list[FilaC
                 incidencias.append(Incidencia("AVISO", "AUSENCIA", f"{t.empleado.id} ({t.empleado.contrato}): {motivo}.",
                                               t.empleado.id))
         tramos = [t for t in tramos if t.empleado.id not in avisados]
-    plataforma = [t for t in tramos if t.empleado.categoria in conf.equipo_plataforma]
-    equipos, sobrantes = formar_equipos_por_horario(plataforma, conf.equipo_plataforma,
-                                                    conf.datos.get("solape_minimo_equipo", 120), dia)
 
-    reparto = Reparto(equipos=equipos)
-    for n, t in enumerate((t for t in tramos if t.empleado.categoria == "Jardinero"), 1):
-        reparto.jardineras.append(Equipo(f"J{n}", "", t.inicio, t.fin, "JARDINERAS", {"Conductor": t.empleado}))
+    op = conf.operativa
+    reparto = Reparto()
+    grupos: list[GrupoParrilla] = []
+    restantes = list(tramos)
+    reserva: list[Tramo] = []
+    for recurso in op.recursos:
+        if recurso.por_orden_de_codigo:
+            suyos = [t for t in restantes if t.empleado.categoria in recurso.categorias]
+            etiqueta = recurso.etiquetas()[0]
+            equipos = [Equipo(f"{recurso.codigo}{n}", "", t.inicio, t.fin, recurso.seccion, {etiqueta: t.empleado})
+                       for n, t in enumerate(suyos, 1)]
+            sobran: list[Tramo] = []
+        else:
+            validas = set(recurso.categorias) or ({recurso.categoria_de(p) for p in recurso.puestos} | set(recurso.puestos))
+            suyos = [t for t in restantes if t.empleado.categoria in validas]
+            equipos, sobran = formar_equipos_por_horario(
+                suyos, recurso.puestos, conf.datos.get("solape_minimo_equipo", 120), dia, recurso.etiquetas(),
+                recurso.categoria_de(recurso.puestos[0]), recurso.codigo, recurso.seccion)
+        restantes = [t for t in restantes if t not in suyos]
+        reserva += sobran
+        reparto.por_recurso[recurso.nombre] = equipos
+        if recurso is op.principal:
+            reparto.equipos = equipos
+        else:
+            reparto.jardineras += equipos
+        grupos.append(GrupoParrilla(recurso, tareas_de(recurso, vuelos), equipos))
+
     for seccion, categoria, destino in (("HIPODROMO", "Hipodromo", reparto.hipodromo),
                                          ("MANDOS", "Mando intermedio", reparto.mandos)):
-        for t in (t for t in tramos if t.empleado.categoria == categoria):
+        for t in (t for t in restantes if t.empleado.categoria == categoria):
             destino.append(Equipo(f"{hhmm(t.inicio)}-{hhmm(t.fin)}", "", t.inicio, t.fin, seccion,
                                   {t.empleado.contrato: t.empleado}))
-    reparto.reserva = [t.empleado for t in sobrantes]
-    if not reparto.mandos:
+    reparto.reserva = [t.empleado for t in reserva]
+    if conf.datos.get("turnos_mandos") and not reparto.mandos:
         incidencias.append(Incidencia("PENDIENTE", "SIN_MANDO", "Ningún RCO/ARCO en el cuadrante de este día."))
 
-    tareas = demanda.tareas_plataforma(vuelos, conf)
-    tareas_jar = demanda.tareas_jardinera(vuelos, conf)
-    transito, transito_jar = conf.servicio["transito_entre_vuelos"], conf.jardineras["transito"]
-    asignadas = asignacion.asignar(tareas, reparto.equipos, transito, segundos, minimizar_recursos=True)
     # Los equipos que no hacen falta quedan de refuerzo (retrasos, cambios de última hora).
-    usados = set(asignadas.values())
-    for equipo in reparto.equipos:
-        if equipo.codigo not in usados:
-            equipo.seccion = "REFUERZO"
-    asignadas |= asignacion.asignar(tareas_jar, reparto.jardineras, transito_jar, segundos)
-
-    incidencias = list(incidencias_previas or []) + incidencias
-    incidencias += validacion.validar(reparto.equipos, reparto.jardineras, tareas, tareas_jar,
-                                      asignadas, transito, transito_jar, dia)
-    return Parrilla(dia, vuelos, tareas, tareas_jar, reparto, asignadas, incidencias)
+    asignadas = asignar_grupos(grupos, segundos, minimizar=True)
+    return parrilla(dia, vuelos, grupos, reparto, asignadas, list(incidencias_previas or []) + incidencias)
