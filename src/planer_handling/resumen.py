@@ -7,8 +7,8 @@ from datetime import date
 
 from .configuracion import Configuracion
 from .importar.cuadrante import FilaCuadrante
-from .mensual import (PASAJE, PASO, PLANIFICADOS, DiaPlanificado, Jornada, aprender_perfiles, cobertura,
-                      demanda_del_dia, emparejar_giros)
+from .mensual import (PASO, DiaPlanificado, Jornada, aprender_perfiles, cobertura, demanda_del_dia,
+                      emparejar_giros, sustituciones)
 from .modelos import Vuelo
 
 
@@ -19,7 +19,7 @@ class ResumenDia:
     personas: int
     horas: float
     sin_cubrir: float               # horas-persona que piden los vuelos y nadie cubre
-    tl_pb_como_operario: float      # horas de operario que tapa un TL o PB que sobra
+    tl_pb_como_operario: float      # horas que tapa alguien de otra categoría que sobra (en Azul, TL o PB de operario)
     plan: DiaPlanificado
 
 
@@ -38,17 +38,21 @@ def resumir(filas: list[FilaCuadrante], vuelos_por_dia: dict[date, list[Vuelo]],
             marca = marcas.get(j.marca) if j else None
             if j and j.tramos and not (marca and not marca["disponible"]):
                 jornadas.append(Jornada(p, dia, j.tramos))
-        demanda, cub = demanda_del_dia(vuelos, conf), cobertura(jornadas)
+        demanda = demanda_del_dia(vuelos, conf)
+        cub = cobertura(jornadas, demanda)
+        ayuda = {r: [x for x in f if x in demanda] for r, f in sustituciones(conf).items() if r in demanda}
         sin_cubrir = sustituye = 0
-        for k in range(len(demanda["TL"])):
-            sobra_tl = max(0, cub["TL"][k] - demanda["TL"][k])
-            sobra_pb = max(0, cub["PB/TOW"][k] - demanda["PB/TOW"][k])
-            falta_op = max(0, demanda["Operario"][k] - cub["Operario"][k])
-            tapa = min(falta_op, sobra_tl + sobra_pb)
-            sustituye += tapa
-            sin_cubrir += (max(0, demanda["TL"][k] - cub["TL"][k]) + max(0, demanda["PB/TOW"][k] - cub["PB/TOW"][k])
-                           + falta_op - tapa + sum(max(0, demanda[r][k] - cub[r][k]) for r in PASAJE))
-        horas = sum(j.minutos for j in jornadas if j.perfil.empleado.categoria in PLANIFICADOS) / 60
+        for k in range(len(next(iter(demanda.values())))):
+            sobra = {r: max(0, cub[r][k] - demanda[r][k]) for r in demanda}
+            for r in demanda:
+                falta = max(0, demanda[r][k] - cub[r][k])
+                for x in ayuda.get(r, []):
+                    tapa = min(falta, sobra[x])
+                    sobra[x] -= tapa
+                    falta -= tapa
+                    sustituye += tapa
+                sin_cubrir += falta
+        horas = sum(j.minutos for j in jornadas if j.perfil.empleado.categoria in demanda) / 60
         resultado.append(ResumenDia(dia, len(vuelos), len(jornadas), round(horas, 1), sin_cubrir * PASO / 60,
                                     sustituye * PASO / 60, DiaPlanificado(dia, len(vuelos), demanda, cub, jornadas)))
     return resultado

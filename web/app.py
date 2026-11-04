@@ -242,13 +242,15 @@ with resumen_tab:
                   None if diferencia is None else f"{diferencia[2]:+.1f} puntos")
         c4.metric("Horas sin cubrir", numero(sin_cubrir),
                   None if diferencia is None else f"{numero(diferencia[1])} h", delta_color="inverse")
-        st.caption("Las horas sin cubrir ya cuentan que un TL o PB que sobra puede hacer de operario: "
-                   f"lo hace {sum(r.tl_pb_como_operario for r in resumen):,.0f} horas en el mes.".replace(",", "."))
+        st.caption("Las horas sin cubrir ya cuentan que quien sobra puede cubrir otro puesto (en Azul, un TL o PB "
+                   f"hace de operario): pasa {sum(r.tl_pb_como_operario for r in resumen):,.0f} horas en el mes.".replace(",", "."))
 
         c1, c2 = st.columns([2, 1])
         dia_s = c1.select_slider("Día", [r.dia for r in resumen], format_func=lambda d: f"{d:%d/%m}", key="dia_s")
-        roles_s = ["Operario", "TL", "PB/TOW"] + [r for r in ("Pasaje", "Responsable pasaje")
-                                                  if any(any(x.plan.demanda[r]) for x in resumen)]
+        pasaje_s = ("Pasaje", "Responsable pasaje")
+        plataforma_s = [r for r in resumen[0].plan.demanda if r not in pasaje_s]
+        roles_s = sorted(plataforma_s, key=lambda r: r != "Operario") + [
+            r for r in pasaje_s if any(any(x.plan.demanda.get(r, [])) for x in resumen)]
         rol = c2.radio("Puesto", roles_s, horizontal=True, key="rol_s")
         plan = next(r for r in resumen if r.dia == dia_s).plan
         # Las franjas empiezan a las 04:00 y pueden pasar de medianoche: el eje va en horas desde las 00:00

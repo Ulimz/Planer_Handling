@@ -49,7 +49,7 @@ def main(argv: list[str] | None = None) -> None:
     salida = args.salida or Path("salida") / f"cuadrante_{args.mes[0]}-{args.mes[1]:02d}.xlsx"
     Path(salida).parent.mkdir(parents=True, exist_ok=True)
     exportar_mes(cm, salida, args.con_nombres)
-    sin_cubrir = sum(dp.deficit(r) for dp in cm.dias for r in ("TL", "PB/TOW", "Operario")) / 60
+    sin_cubrir = sum(dp.deficit(r) for dp in cm.dias for r in conf.operativa.categorias()) / 60
     print(f"{len(perfiles)} personas, {sum(len(v) for v in vuelos.values())} vuelos, "
           f"{sin_cubrir:.0f} horas-persona sin cubrir. Cuadrante guardado en {salida}")
 

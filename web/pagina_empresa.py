@@ -171,32 +171,40 @@ def mostrar(perfil: empresas.Perfil, perfiles: list[empresas.Perfil], carpeta_ej
                 int(cp.get("complementarias_especiales_mes_h", 20)), key=f"{k}_espmes")
 
     with t_ram:
-        s = d["servicio"]
-        st.markdown("**Ventana de trabajo del equipo** (minutos respecto a la llegada STA y la salida STD)")
-        c1, c2, c3 = st.columns(3)
-        s["giro"]["antes_sta"] = c1.number_input("Giro: antes de la llegada", 0, 180, int(s["giro"]["antes_sta"]), key=f"{k}_g1")
-        s["giro"]["despues_std"] = c1.number_input("Giro: después de la salida", 0, 180, int(s["giro"]["despues_std"]), key=f"{k}_g2")
-        s["solo_salida"]["antes_std"] = c2.number_input("Solo salida: antes", 0, 240, int(s["solo_salida"]["antes_std"]), key=f"{k}_s1")
-        s["solo_salida"]["despues_std"] = c2.number_input("Solo salida: después", 0, 180, int(s["solo_salida"]["despues_std"]), key=f"{k}_s2")
-        s["solo_llegada"]["antes_sta"] = c3.number_input("Solo llegada: antes", 0, 180, int(s["solo_llegada"]["antes_sta"]), key=f"{k}_l1")
-        s["solo_llegada"]["despues_sta"] = c3.number_input("Solo llegada: después", 0, 240, int(s["solo_llegada"]["despues_sta"]), key=f"{k}_l2")
-        s["transito_entre_vuelos"] = c1.number_input("Tránsito entre dos vuelos", 0, 120, int(s["transito_entre_vuelos"]), key=f"{k}_tr")
-        st.markdown("**Equipo de plataforma**, en orden: el primero es el jefe de equipo y el segundo el pushback.")
-        eq = st.data_editor(pd.DataFrame({"Puesto": d["equipo_plataforma"]}), num_rows="dynamic", hide_index=True,
-                            key=f"{k}_eq")
-        d["equipo_plataforma"] = [str(f["Puesto"]) for f in _filas(eq)]
-        c1, c2 = st.columns(2)
-        tp = d.setdefault("tl_pb_como_operario", {"permitido": True, "coste": 100})
-        tp["permitido"] = c1.toggle("Un TL o PB que sobra puede hacer de operario", bool(tp.get("permitido")),
-                                    key=f"{k}_tlpb", help="Solo si hace falta; si no, queda de refuerzo.")
-        d["solape_minimo_equipo"] = c2.number_input("Coincidencia mínima para formar equipo (min)", 0, 600,
-                                                    int(d.get("solape_minimo_equipo", 120)), key=f"{k}_sol")
-        j = d["jardineras"]
-        st.markdown("**Jardineras** (autobuses a remoto)")
-        c1, c2, c3 = st.columns(3)
-        j["llegada"]["hasta_sta"] = c1.number_input("Llegada: hasta después de STA", 0, 120, int(j["llegada"]["hasta_sta"]), key=f"{k}_j1")
-        j["salida"]["antes_std"] = c2.number_input("Salida: desde antes de STD", 0, 180, int(j["salida"]["antes_std"]), key=f"{k}_j2")
-        j["salida"]["hasta_antes_std"] = c3.number_input("Salida: hasta antes de STD", 0, 120, int(j["salida"]["hasta_antes_std"]), key=f"{k}_j3")
+        if "operativa" in d:
+            # Perfil con recursos propios (grupos con capataz, PB aparte, coordinador…): la ventana del
+            # equipo y las jardineras de abajo no se usan.
+            st.info("Este perfil describe su forma de trabajar por recursos (sección `operativa` del archivo): "
+                    "qué recursos tiene y qué tareas le pide cada vuelo. De momento se cambia en el archivo; "
+                    "aquí se ve cómo está.")
+            st.code(yaml.safe_dump({"operativa": d["operativa"]}, allow_unicode=True, sort_keys=False), language="yaml")
+        else:
+            s = d["servicio"]
+            st.markdown("**Ventana de trabajo del equipo** (minutos respecto a la llegada STA y la salida STD)")
+            c1, c2, c3 = st.columns(3)
+            s["giro"]["antes_sta"] = c1.number_input("Giro: antes de la llegada", 0, 180, int(s["giro"]["antes_sta"]), key=f"{k}_g1")
+            s["giro"]["despues_std"] = c1.number_input("Giro: después de la salida", 0, 180, int(s["giro"]["despues_std"]), key=f"{k}_g2")
+            s["solo_salida"]["antes_std"] = c2.number_input("Solo salida: antes", 0, 240, int(s["solo_salida"]["antes_std"]), key=f"{k}_s1")
+            s["solo_salida"]["despues_std"] = c2.number_input("Solo salida: después", 0, 180, int(s["solo_salida"]["despues_std"]), key=f"{k}_s2")
+            s["solo_llegada"]["antes_sta"] = c3.number_input("Solo llegada: antes", 0, 180, int(s["solo_llegada"]["antes_sta"]), key=f"{k}_l1")
+            s["solo_llegada"]["despues_sta"] = c3.number_input("Solo llegada: después", 0, 240, int(s["solo_llegada"]["despues_sta"]), key=f"{k}_l2")
+            s["transito_entre_vuelos"] = c1.number_input("Tránsito entre dos vuelos", 0, 120, int(s["transito_entre_vuelos"]), key=f"{k}_tr")
+            st.markdown("**Equipo de plataforma**, en orden: el primero es el jefe de equipo y el segundo el pushback.")
+            eq = st.data_editor(pd.DataFrame({"Puesto": d["equipo_plataforma"]}), num_rows="dynamic", hide_index=True,
+                                key=f"{k}_eq")
+            d["equipo_plataforma"] = [str(f["Puesto"]) for f in _filas(eq)]
+            c1, c2 = st.columns(2)
+            tp = d.setdefault("tl_pb_como_operario", {"permitido": True, "coste": 100})
+            tp["permitido"] = c1.toggle("Un TL o PB que sobra puede hacer de operario", bool(tp.get("permitido")),
+                                        key=f"{k}_tlpb", help="Solo si hace falta; si no, queda de refuerzo.")
+            d["solape_minimo_equipo"] = c2.number_input("Coincidencia mínima para formar equipo (min)", 0, 600,
+                                                        int(d.get("solape_minimo_equipo", 120)), key=f"{k}_sol")
+            j = d["jardineras"]
+            st.markdown("**Jardineras** (autobuses a remoto)")
+            c1, c2, c3 = st.columns(3)
+            j["llegada"]["hasta_sta"] = c1.number_input("Llegada: hasta después de STA", 0, 120, int(j["llegada"]["hasta_sta"]), key=f"{k}_j1")
+            j["salida"]["antes_std"] = c2.number_input("Salida: desde antes de STD", 0, 180, int(j["salida"]["antes_std"]), key=f"{k}_j2")
+            j["salida"]["hasta_antes_std"] = c3.number_input("Salida: hasta antes de STD", 0, 120, int(j["salida"]["hasta_antes_std"]), key=f"{k}_j3")
 
     with t_pas:
         p = d.setdefault("pasaje", {})
@@ -246,7 +254,9 @@ def mostrar(perfil: empresas.Perfil, perfiles: list[empresas.Perfil], carpeta_ej
                                             "Puede hacer": ", ".join(f.get("habilitaciones", []))}
                                            for n, f in d["funciones"].items()]),
                              num_rows="dynamic", hide_index=True, width="stretch", key=f"{k}_fun",
-                             column_config={"Categoría": st.column_config.SelectboxColumn(options=CATEGORIAS, required=True)})
+                             column_config={"Categoría": st.column_config.SelectboxColumn(
+                                 options=list(dict.fromkeys(CATEGORIAS + [f["categoria"] for f in d["funciones"].values()])),
+                                 required=True)})
         d["funciones"] = {str(f["Función"]): {"categoria": f["Categoría"], "habilitaciones": _lista(f["Puede hacer"])}
                           for f in _filas(fun)}
 

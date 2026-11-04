@@ -25,12 +25,12 @@ from datetime import date, timedelta
 
 from ortools.sat.python import cp_model
 
-from . import demanda
 from .configuracion import Configuracion
 from .desde_cuadrante import empleados_desde_cuadrante
 from .importar.cuadrante import FilaCuadrante
 from .importar.vuelos import clave
 from .modelos import Empleado, Vuelo, hhmm
+from .operativa import tareas_de
 
 PASO = 15
 DESCANSO_MINIMO = 12 * 60
@@ -51,6 +51,8 @@ PERSONAS_POR_EQUIPO = {"TL": 1, "PB/TOW": 1, "Operario": 3}
 PASAJE = ("Pasaje", "Responsable pasaje")
 PLANIFICADOS = set(PERSONAS_POR_EQUIPO) | set(PASAJE)
 COSTE_FALTA = {"TL": 3000, "PB/TOW": 3000, "Operario": 1000, "Pasaje": 1000, "Responsable pasaje": 3000}
+# Lo anterior es el perfil de Azul cuando no se dice otra cosa; cada empresa lo pone en `operativa`.
+SUSTITUCIONES_AZUL = {"Operario": ["TL", "PB/TOW"]}
 
 
 @dataclass
@@ -245,17 +247,42 @@ def _franja(minuto: int) -> int:
 
 
 def demanda_del_dia(vuelos: list[Vuelo], conf: Configuracion) -> dict[str, list[int]]:
-    """Equipos a la vez en cada franja (cada vuelo ocupa a un equipo su tiempo de servicio más el
-    tránsito al siguiente) multiplicados por las personas de cada rol en un equipo."""
-    tareas = demanda.tareas_plataforma(emparejar_giros(vuelos), conf)
-    transito = conf.servicio["transito_entre_vuelos"]
-    equipos = [0] * franjas_del_dia()
-    for t in tareas:
-        for k in range(max(0, _franja(t.inicio)), min(len(equipos), _franja(t.fin + transito - 1) + 1)):
-            equipos[k] += 1
-    resultado = {rol: [n * e for e in equipos] for rol, n in PERSONAS_POR_EQUIPO.items()}
+    """Personas de cada categoría necesarias en cada franja. Por cada recurso de la operativa: los
+    recursos a la vez (cada vuelo ocupa uno su tiempo de servicio más el tránsito al siguiente; un
+    coordinador puede llevar varios) multiplicados por las personas de cada categoría que lleva.
+    En Azul: equipos a la vez × (1 TL, 1 PB/TOW y 3 operarios)."""
+    giros = emparejar_giros(vuelos)
+    n = franjas_del_dia()
+    resultado: dict[str, list[int]] = {}
+    for recurso in conf.operativa.recursos:
+        if not recurso.en_cuadrante:
+            continue
+        a_la_vez = [0] * n
+        for t in tareas_de(recurso, giros):
+            for k in range(max(0, _franja(t.inicio)), min(n, _franja(t.fin + recurso.transito - 1) + 1)):
+                a_la_vez[k] += 1
+        recursos = [-(-x // recurso.simultaneos) for x in a_la_vez]
+        for categoria, personas in recurso.personas_por_categoria().items():
+            fila = resultado.setdefault(categoria, [0] * n)
+            for k in range(n):
+                fila[k] += personas * recursos[k]
     resultado.update(demanda_pasaje(vuelos, conf))
     return resultado
+
+
+def sustituciones(conf: Configuracion) -> dict[str, list[str]]:
+    """Categoría -> quién puede cubrirla si le sobra tiempo (en Azul, un TL o PB hace de operario)."""
+    return conf.operativa.puede_hacer_de
+
+
+def costes_falta(conf: Configuracion) -> dict[str, int]:
+    costes = dict(COSTE_FALTA)
+    costes.update(conf.operativa.coste_falta)
+    return costes
+
+
+def roles_planificados(conf: Configuracion) -> list[str]:
+    return conf.operativa.categorias() + list(PASAJE)
 
 
 def demanda_pasaje(vuelos: list[Vuelo], conf: Configuracion) -> dict[str, list[int]]:
@@ -325,7 +352,9 @@ def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[
                    ausentes: dict[str, str] | None = None,
                    actual: dict[str, list[tuple[int, int]]] | None = None,
                    coste_tl_pb_operario: int = 0,
-                   costes_cambio: dict[str, tuple[int | None, int | None]] | None = None) -> list[Jornada]:
+                   costes_cambio: dict[str, tuple[int | None, int | None]] | None = None,
+                   puede_hacer_de: dict[str, list[str]] | None = None,
+                   coste_falta: dict[str, int] | None = None) -> list[Jornada]:
     """Horarios del día. Con `actual` (el horario ya publicado de ese día) reorganiza: mantiene a
     cada uno en su horario salvo que haga falta moverlo para cubrir a los ausentes, y solo llama
     a alguien que libra si no hay otra forma.
@@ -333,10 +362,18 @@ def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[
     Con 0 se cuenta con ellos como un operario más; con un coste, solo si hace falta y si no
     quedan de refuerzo.
     `costes_cambio` (al reorganizar): id -> (coste de moverle el horario, coste de llamarle en su día
-    libre). None = no se puede (por contrato o por falta de preaviso, ver `reglas_cambio`)."""
+    libre). None = no se puede (por contrato o por falta de preaviso, ver `reglas_cambio`).
+    Las categorías que se planifican son las de `demanda_dia`. `puede_hacer_de`: categoría -> quién la
+    cubre si le sobra (por defecto, el TL o PB que hace de operario en Azul); el coste de que lo haga
+    es `coste_tl_pb_operario`. `coste_falta`: cuánto pesa cada franja sin cubrir de cada categoría."""
     modelo = cp_model.CpModel()
     n = franjas_del_dia()
-    cubre: dict[str, list[list]] = {rol: [[] for _ in range(n)] for rol in PLANIFICADOS}
+    planificados = set(demanda_dia)
+    sustitutos = {r: [s for s in fuentes if s in planificados]
+                  for r, fuentes in (SUSTITUCIONES_AZUL if puede_hacer_de is None else puede_hacer_de).items()
+                  if r in planificados}
+    pesos = dict(COSTE_FALTA) if coste_falta is None else dict(coste_falta)
+    cubre: dict[str, list[list]] = {rol: [[] for _ in range(n)] for rol in planificados}
     eleccion: dict[tuple[str, int], tuple[cp_model.IntVar, list[tuple[int, int]]]] = {}
     coste = []
     fijas: list[Jornada] = []
@@ -359,7 +396,7 @@ def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[
             trabaja = p.trabaja(dia, referencia)
             if trabaja is False:
                 continue
-        if e.categoria not in PLANIFICADOS:
+        if e.categoria not in planificados:
             # Jardineras, hipódromo y mandos: mantienen su horario (el publicado o el habitual).
             if publicado:
                 fijas.append(Jornada(p, dia, publicado))
@@ -416,40 +453,41 @@ def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[
 
     por_id = {p.empleado.id: p for p in perfiles}
     plan_reserva = [Jornada(por_id[eid], dia, eleccion[(eid, n_op)][1]) for eid, n_op in reserva]
-    cubre_reserva = cobertura(plan_reserva)
+    cubre_reserva = cobertura(plan_reserva, planificados)
     coste_reserva = sum(coste_opcion.get(r, 0) for r in reserva)
     deficit = []
+    pares = [(r, s) for r, fuentes in sustitutos.items() for s in fuentes]   # (categoría, quién la cubre)
+    con_ayuda = set(sustitutos) | {s for _, s in pares}
     for k in range(n):
-        tl, pb, op = (sum(cubre[r][k]) for r in ("TL", "PB/TOW", "Operario"))
-        # Un TL o un PB que sobra en esa franja puede hacer de operario (según la empresa, con un coste).
-        extra_tl = modelo.NewIntVar(0, len(perfiles), f"xtl{k}")
-        extra_pb = modelo.NewIntVar(0, len(perfiles), f"xpb{k}")
-        faltas = {r: modelo.NewIntVar(0, 10 * len(perfiles), f"f{r}{k}") for r in PLANIFICADOS}
-        modelo.Add(tl - extra_tl + faltas["TL"] >= demanda_dia["TL"][k])
-        modelo.Add(pb - extra_pb + faltas["PB/TOW"] >= demanda_dia["PB/TOW"][k])
-        modelo.Add(op + extra_tl + extra_pb + faltas["Operario"] >= demanda_dia["Operario"][k])
-        modelo.Add(extra_tl <= tl)
-        modelo.Add(extra_pb <= pb)
-        for r in PASAJE:
-            modelo.Add(sum(cubre[r][k]) + faltas[r] >= demanda_dia[r][k])
-        deficit += [COSTE_FALTA[r] * faltas[r] for r in PLANIFICADOS]
-        deficit.append(coste_tl_pb_operario * (extra_tl + extra_pb))
+        tiene = {r: sum(cubre[r][k]) for r in planificados}
+        # Quien sobra en esa franja puede cubrir otra categoría (según la empresa, con un coste).
+        extra = {(r, s): modelo.NewIntVar(0, len(perfiles), f"x{s}{r}{k}") for r, s in pares}
+        faltas = {r: modelo.NewIntVar(0, 10 * len(perfiles), f"f{r}{k}") for r in planificados}
+        for r in (r for r in demanda_dia if r in con_ayuda):
+            recibe = sum(extra[r, s] for s in sustitutos.get(r, []))
+            da = sum(extra[t, r] for t, s in pares if s == r)
+            modelo.Add(tiene[r] - da + recibe + faltas[r] >= demanda_dia[r][k])
+        for s in dict.fromkeys(s for _, s in pares):
+            modelo.Add(sum(extra[t, x] for t, x in pares if x == s) <= tiene[s])
+        for r in (r for r in demanda_dia if r not in con_ayuda):
+            modelo.Add(tiene[r] + faltas[r] >= demanda_dia[r][k])
+        deficit += [pesos.get(r, 1000) * faltas[r] for r in planificados]
+        deficit.append(coste_tl_pb_operario * sum(extra.values()))
         # Pista completa (también de estas variables): el optimizador parte del plan de reserva (el
         # horario publicado o el habitual) y siempre tiene una solución aunque se le acabe el tiempo.
-        r_tl, r_pb, r_op = (cubre_reserva[r][k] for r in ("TL", "PB/TOW", "Operario"))
-        sobra_tl, sobra_pb = max(0, r_tl - demanda_dia["TL"][k]), max(0, r_pb - demanda_dia["PB/TOW"][k])
-        hace_falta = max(0, demanda_dia["Operario"][k] - r_op)
-        usa_tl = min(sobra_tl, hace_falta)
-        usa_pb = min(sobra_pb, hace_falta - usa_tl)
-        falta = {"TL": max(0, demanda_dia["TL"][k] - r_tl), "PB/TOW": max(0, demanda_dia["PB/TOW"][k] - r_pb),
-                 "Operario": hace_falta - usa_tl - usa_pb}
-        falta.update({r: max(0, demanda_dia[r][k] - cubre_reserva[r][k]) for r in PASAJE})
-        modelo.AddHint(extra_tl, usa_tl)
-        modelo.AddHint(extra_pb, usa_pb)
-        for r in PLANIFICADOS:
+        sobra = {s: max(0, cubre_reserva[s][k] - demanda_dia[s][k]) for _, s in pares}
+        falta = {r: max(0, demanda_dia[r][k] - cubre_reserva[r][k]) for r in planificados}
+        usa = {}
+        for r, s in pares:
+            usa[r, s] = min(sobra[s], falta[r])
+            sobra[s] -= usa[r, s]
+            falta[r] -= usa[r, s]
+        for par, var in extra.items():
+            modelo.AddHint(var, usa[par])
+        for r in planificados:
             modelo.AddHint(faltas[r], falta[r])
-        coste_reserva += (sum(COSTE_FALTA[r] * falta[r] for r in PLANIFICADOS)
-                          + coste_tl_pb_operario * (usa_tl + usa_pb))
+        coste_reserva += (sum(pesos.get(r, 1000) * falta[r] for r in planificados)
+                          + coste_tl_pb_operario * sum(usa.values()))
     modelo.Minimize(sum(deficit) + sum(coste))
 
     solver = cp_model.CpSolver()
@@ -463,26 +501,37 @@ def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[
     else:
         jornadas = [Jornada(por_id[eid], dia, tramos) for (eid, _), (x, tramos) in eleccion.items() if solver.Value(x)]
     if actual is None:
-        _recortar(jornadas, demanda_dia, contar_tl_pb=coste_tl_pb_operario == 0)
+        _recortar(jornadas, demanda_dia, contar_tl_pb=coste_tl_pb_operario == 0, puede_hacer_de=sustitutos)
     return fijas + jornadas
 
 
-def _recortar(jornadas: list[Jornada], demanda_dia: dict[str, list[int]], contar_tl_pb: bool = True) -> None:
+def _recortar(jornadas: list[Jornada], demanda_dia: dict[str, list[int]], contar_tl_pb: bool = True,
+              puede_hacer_de: dict[str, list[str]] | None = None) -> None:
     """Acorta por los extremos las jornadas de quien tiene horas variables (parciales) mientras
     el trozo que se quita sobre en esa franja. Así no se dan más horas de las que piden los vuelos.
-    Sin `contar_tl_pb` no se quitan horas de operario contando con un TL o PB que sobra: ese queda
-    de refuerzo."""
-    cob = cobertura(jornadas)
+    Sin `contar_tl_pb` no se quitan horas de una categoría contando con alguien de otra que sobra
+    (en Azul, un TL o PB que hace de operario): ese queda de refuerzo."""
+    sustitutos = SUSTITUCIONES_AZUL if puede_hacer_de is None else puede_hacer_de
+    sustitutos = {r: [x for x in f if x in demanda_dia] for r, f in sustitutos.items() if r in demanda_dia}
+    fuentes = {x for f in sustitutos.values() for x in f}
+    relacionados = list(dict.fromkeys([r for r in demanda_dia if r in sustitutos or r in fuentes]))
+    cob = cobertura(jornadas, set(demanda_dia))
     n = franjas_del_dia()
 
     def puede_quitar(rol: str, k: int) -> bool:
-        if rol in PASAJE:
+        if rol not in relacionados:
             return cob[rol][k] - 1 >= demanda_dia[rol][k]
-        tl, pb, op = (cob[r][k] - (r == rol) for r in ("TL", "PB/TOW", "Operario"))
-        dtl, dpb, dop = (demanda_dia[r][k] for r in ("TL", "PB/TOW", "Operario"))
-        if not contar_tl_pb and rol == "Operario" and op < dop:
+        tiene = {r: cob[r][k] - (r == rol) for r in relacionados}
+        pide = {r: demanda_dia[r][k] for r in relacionados}
+        if not contar_tl_pb and rol in sustitutos and tiene[rol] < pide[rol]:
             return False
-        return tl >= dtl and pb >= dpb and op + (tl - dtl) + (pb - dpb) >= dop
+        for r in relacionados:
+            if r in sustitutos:
+                if tiene[r] + sum(tiene[x] - pide[x] for x in sustitutos[r]) < pide[r]:
+                    return False
+            elif tiene[r] < pide[r]:
+                return False
+        return True
 
     for j in sorted(jornadas, key=lambda j: -j.minutos):
         p = j.perfil
@@ -502,9 +551,11 @@ def _recortar(jornadas: list[Jornada], demanda_dia: dict[str, list[int]], contar
                     cambiado = True
 
 
-def cobertura(jornadas: list[Jornada]) -> dict[str, list[int]]:
+def cobertura(jornadas: list[Jornada], roles=None) -> dict[str, list[int]]:
+    """Personas de cada categoría en cada franja. `roles`: las categorías que se cuentan (por defecto,
+    las de Azul)."""
     n = franjas_del_dia()
-    resultado = {rol: [0] * n for rol in PLANIFICADOS}
+    resultado = {rol: [0] * n for rol in (PLANIFICADOS if roles is None else roles)}
     for j in jornadas:
         rol = j.perfil.empleado.categoria
         if rol in resultado:
@@ -546,10 +597,11 @@ def planificar_mes(vuelos_por_dia: dict[date, list[Vuelo]], perfiles: list[Perfi
         demanda_dia = demanda_del_dia(vuelos_por_dia[dia], conf)
         ausentes = ausentes_del_dia(ausencias or [], perfiles, dia)
         jornadas = planificar_dia(dia, demanda_dia, perfiles, referencia, fin_anterior, dias_usados,
-                                  segundos_por_dia, ausentes, coste_tl_pb_operario=coste_tl_pb_operario(conf))
+                                  segundos_por_dia, ausentes, coste_tl_pb_operario=coste_tl_pb_operario(conf),
+                                  puede_hacer_de=sustituciones(conf), coste_falta=costes_falta(conf))
         fin_anterior = {j.perfil.empleado.id: j.fin for j in jornadas}
         dias_usados.update(j.perfil.empleado.id for j in jornadas)
-        dias.append(DiaPlanificado(dia, len(vuelos_por_dia[dia]), demanda_dia, cobertura(jornadas), jornadas,
+        dias.append(DiaPlanificado(dia, len(vuelos_por_dia[dia]), demanda_dia, cobertura(jornadas, demanda_dia), jornadas,
                                    ausentes))
         if progreso:
             progreso(dia, len(dias), len(vuelos_por_dia))
@@ -639,7 +691,8 @@ def reorganizar(filas: list[FilaCuadrante], dias_mes: list[date], vuelos_por_dia
     cambios: list[Cambio] = []
     dias: list[DiaPlanificado] = []
     fin_anterior: dict[str, int] = {}
-    vacia = {rol: [0] * franjas_del_dia() for rol in PLANIFICADOS}
+    roles = roles_planificados(conf)
+    vacia = {rol: [0] * franjas_del_dia() for rol in roles}
     for n, dia in enumerate(dias_mes, 1):
         registradas = ausentes_del_dia(ausencias, perfiles, dia)     # las del registro (nuevas)
         actual, ausentes = {}, dict(registradas)                      # más las que ya traía el cuadrante
@@ -659,13 +712,14 @@ def reorganizar(filas: list[FilaCuadrante], dias_mes: list[date], vuelos_por_dia
             publicada = cobertura([Jornada(p, dia, fila_de[p.empleado.nombre].jornadas[dia].tramos)
                                    for p in perfiles if p.empleado.id in actual or p.empleado.id in registradas
                                    if fila_de[p.empleado.nombre].jornadas.get(dia)
-                                   and fila_de[p.empleado.nombre].jornadas[dia].tramos])
-            demanda_dia = {r: [min(d, c) for d, c in zip(demanda_vuelos[r], publicada[r])] for r in PLANIFICADOS}
+                                   and fila_de[p.empleado.nombre].jornadas[dia].tramos], roles)
+            demanda_dia = {r: [min(d, c) for d, c in zip(demanda_vuelos[r], publicada[r])] for r in roles}
             preaviso = (dia - aviso).days
             reglas = {p.empleado.id: reglas_cambio(p, preaviso, especiales[p.empleado.id], conf) for p in perfiles}
             jornadas = planificar_dia(dia, demanda_dia, perfiles, dias_mes[0], fin_anterior, {}, segundos_por_dia,
                                       ausentes, actual, coste_tl_pb_operario(conf),
-                                      {eid: costes for eid, (costes, _, _) in reglas.items()})
+                                      {eid: costes for eid, (costes, _, _) in reglas.items()},
+                                      sustituciones(conf), costes_falta(conf))
             nuevo = {j.perfil.empleado.id: j.tramos for j in jornadas}
             minimo_complementarias = conf.datos.get("cambios_publicado", {}).get("preaviso_complementarias_dias", 0)
             for p in perfiles:
@@ -683,10 +737,10 @@ def reorganizar(filas: list[FilaCuadrante], dias_mes: list[date], vuelos_por_dia
                         especiales[eid] += fuera
                     cambios.append(Cambio(dia, p.empleado.nombre, p.funcion, _texto(antes), _texto(despues), tipo,
                                           p.contrato, preaviso, round(fuera / 60, 2), tipo_horas))
-            dp = DiaPlanificado(dia, len(vuelos_por_dia[dia]), demanda_dia, cobertura(jornadas), jornadas, ausentes)
+            dp = DiaPlanificado(dia, len(vuelos_por_dia[dia]), demanda_dia, cobertura(jornadas, roles), jornadas, ausentes)
         else:
             jornadas = [Jornada(p, dia, actual[p.empleado.id]) for p in perfiles if p.empleado.id in actual]
-            dp = DiaPlanificado(dia, 0, vacia, cobertura(jornadas), jornadas, ausentes)
+            dp = DiaPlanificado(dia, 0, vacia, cobertura(jornadas, roles), jornadas, ausentes)
         fin_anterior = {j.perfil.empleado.id: j.fin for j in dp.jornadas}
         dias.append(dp)
         if progreso:
