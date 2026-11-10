@@ -37,3 +37,31 @@ def test_reparto_de_pasaje_con_relevo(conf):
     facturacion = next(t for t in tareas if t.puesto == "Facturación")
     assert len(facturacion.agentes) == 8 and facturacion.sin_cubrir == 0
     assert all(t.sin_cubrir == 0 for t in tareas)
+
+
+def _alc():
+    from planer_handling.configuracion import Configuracion
+
+    from .conftest import RAIZ
+    return Configuracion.cargar(RAIZ / "config" / "azul_alc_pasaje.yaml")
+
+
+def test_pasaje_de_alc_mostradores_compartidos_y_puestos_por_categoria():
+    conf = _alc()
+    # Nueve salidas seguidas de 10:00 a 10:40 (check-in de 07:00 a 09:59) y una de primera hora.
+    vuelos = [Vuelo(DIA, vuelo_out=f"XX{i}", destino="MAN", std=600 + 5 * i) for i in range(9)]
+    vuelos.append(Vuelo(DIA, vuelo_out="XX99", destino="EDI", std=7 * 60))
+    d = mensual.demanda_pasaje(vuelos, conf)
+    assert set(d) == {"Pasaje", "Responsable pasaje", "Operaciones pasaje", "Ticket desk", "Lost and found"}
+    franja = lambda rol, m: d[rol][mensual._franja(m)]
+    assert franja("Pasaje", 8 * 60) == 3 + 2 + 6          # 9 vuelos facturando: 3 + 9/4,5, y la reserva
+    assert franja("Pasaje", 6 * 60 + 30) == 2 + 6         # la de las 07:00, en puerta desde las 06:00
+    assert franja("Pasaje", 5 * 60 + 45) == 3 + 1 + 6     # y su check-in, abierto desde las 04:00
+    assert franja("Operaciones pasaje", 8 * 60) == 2
+    assert franja("Ticket desk", 8 * 60) == 1 and franja("Lost and found", 8 * 60) == 1
+    assert franja("Responsable pasaje", 8 * 60) == 3
+    # La parrilla del día lleva cada puesto con su categoría.
+    tareas = pasaje.tareas_pasaje(vuelos, conf)
+    assert {t.categoria for t in tareas if t.puesto == "Operaciones"} == {"Operaciones pasaje"}
+    assert not any(t.puesto == "Oficina" and t.plazas for t in tareas)
+    assert "Operaciones pasaje" in mensual.roles_planificados(conf)
