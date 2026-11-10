@@ -25,6 +25,7 @@ from datetime import date, timedelta
 
 from ortools.sat.python import cp_model
 
+from . import pasaje
 from .configuracion import Configuracion
 from .desde_cuadrante import empleados_desde_cuadrante
 from .importar.cuadrante import FilaCuadrante
@@ -282,38 +283,26 @@ def costes_falta(conf: Configuracion) -> dict[str, int]:
 
 
 def roles_planificados(conf: Configuracion) -> list[str]:
-    return conf.operativa.categorias() + list(PASAJE)
+    return conf.operativa.categorias() + pasaje.categorias(conf)
 
 
 def demanda_pasaje(vuelos: list[Vuelo], conf: Configuracion) -> dict[str, list[int]]:
     """Personas de pasaje en cada franja: facturación y embarque de cada salida, y los puestos fijos
     (oficina, lost and found…) y responsables mientras dura la operación. Las cifras salen de
-    `pasaje` en la configuración."""
+    `pasaje` en la configuración (ver pasaje.bloques)."""
     n = franjas_del_dia()
-    resultado = {rol: [0] * n for rol in PASAJE}
     regla = conf.datos.get("pasaje", {})
-    if not regla.get("activo") or not vuelos:
-        return resultado
+    resultado = {rol: [0] * n for rol in pasaje.categorias(conf)}
 
     def sumar(rol: str, desde: int, hasta: int, personas: int) -> None:
         for k in range(max(0, _franja(desde)), min(n, _franja(hasta - 1) + 1)):
             resultado[rol][k] += personas
 
-    fac, emb = regla.get("facturacion", {}), regla.get("embarque", {})
-    momentos = []
-    for v in vuelos:
-        if v.std is not None:
-            sumar("Pasaje", v.std - fac.get("abre_antes_std", 150), v.std - fac.get("cierra_antes_std", 40),
-                  fac.get("personas", 0))
-            sumar("Pasaje", v.std - emb.get("desde_antes_std", 45), v.std - emb.get("hasta_antes_std", 0),
-                  emb.get("personas", 0))
-            momentos += [v.std - fac.get("abre_antes_std", 150), v.std]
-        if v.sta is not None:
-            momentos.append(v.sta + regla.get("despues_ultima_llegada", 60))
-    inicio, fin = min(momentos) - regla.get("antes_primera_facturacion", 15), max(momentos)
-    for puesto, personas in regla.get("puestos_fijos", {}).items():
-        sumar("Pasaje", inicio, fin, personas)
-    sumar("Responsable pasaje", inicio, fin, regla.get("responsables_a_la_vez", 0))
+    lista, operacion = pasaje.bloques(vuelos, regla)
+    for _, _, desde, hasta, personas, categoria in lista:
+        sumar(categoria, desde, hasta, personas)
+    if operacion:
+        sumar(pasaje.RESPONSABLE, *operacion, regla.get("responsables_a_la_vez", 0))
     return resultado
 
 

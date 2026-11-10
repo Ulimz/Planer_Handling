@@ -1,0 +1,45 @@
+# Perfil de Azul en Alicante (ALC) con PASAJE planificado. Parte de base.yaml (la rampa de Azul) y
+# solo añade el pasaje.
+#
+# Las cifras salen de la planificación real de pasaje de ALC de 2026 (Manhattan Live, 120 días de
+# enero a octubre) cruzada con las parrillas de puerta de esos días. Ulises (10-11-2026): esa
+# planificación es lo que hace falta, y a veces falta gente. Con estas reglas las horas de agentes
+# (CSA) salen como las de Manhattan: de media un 2 % más, entre −7 % y +8 % según el mes. Responsables
+# y OPS cuadran (−1 % y −6 %); ticket desk sale corto (−28 %, a veces hay 2) y lost and found largo
+# (+20 %, no siempre hay uno) porque aquí van a 1 persona fija toda la operación.
+hereda: base.yaml
+
+empresa:
+  nombre: Azul Handling ALC (rampa y pasaje)
+
+pasaje:
+  activo: true
+  facturacion:
+    # Abre 3 h antes del STD (en las parrillas de invierno, 2 h) y cierra 41 min antes.
+    abre_antes_std: 180
+    cierra_antes_std: 41
+    # Mostradores compartidos por todos los vuelos (el de cierres y otro de apoyo, más kioscos y
+    # colas): 3 agentes más 1 por cada 4,5 vuelos con el check-in abierto (de 3 a 8 a la vez).
+    compartida: {base: 3, vuelos_por_persona: 4.5}
+  embarque:
+    personas: 2                  # PRE-Q y escáner, llegan a la vez
+    desde_antes_std: 50
+    primera_ola: {hasta: "08:00", desde_antes_std: 60}   # las salidas de primera hora, 1 h antes
+    hasta_antes_std: 0           # al STD se van a otra puerta
+    reserva: 6                   # agentes de más mientras hay operación: de puerta en puerta, incidencias
+  puestos_fijos:
+    Oficina: 0
+    Operaciones: {personas: 2, categoria: Operaciones pasaje}       # OPS
+    Ticket desk: {personas: 1, categoria: Ticket desk}              # TKD/TKT, atención al cliente en ventas
+    Lost and found: {personas: 1, categoria: Lost and found}        # LF/TLF
+  responsables_a_la_vez: 3       # 1 DSM (responsable de turno) y 2 PSM (ayudantes/supervisoras)
+
+funciones:
+  CSA:  {categoria: Pasaje,             habilitaciones: [Facturación, Embarque]}
+  DSM:  {categoria: Responsable pasaje, habilitaciones: [Responsable pasaje]}
+  PSM:  {categoria: Responsable pasaje, habilitaciones: [Responsable pasaje]}
+  OPS:  {categoria: Operaciones pasaje, habilitaciones: [Operaciones pasaje]}
+  TKD:  {categoria: Ticket desk,        habilitaciones: [Ticket desk]}
+  TKT:  {categoria: Ticket desk,        habilitaciones: [Ticket desk]}
+  LF:   {categoria: Lost and found,     habilitaciones: [Lost and found]}
+  TLF:  {categoria: Lost and found,     habilitaciones: [Lost and found]}

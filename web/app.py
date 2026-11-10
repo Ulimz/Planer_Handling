@@ -247,7 +247,7 @@ with resumen_tab:
 
         c1, c2 = st.columns([2, 1])
         dia_s = c1.select_slider("Día", [r.dia for r in resumen], format_func=lambda d: f"{d:%d/%m}", key="dia_s")
-        pasaje_s = ("Pasaje", "Responsable pasaje")
+        pasaje_s = pasaje.categorias(conf)
         plataforma_s = [r for r in resumen[0].plan.demanda if r not in pasaje_s]
         roles_s = sorted(plataforma_s, key=lambda r: r != "Operario") + [
             r for r in pasaje_s if any(any(x.plan.demanda.get(r, [])) for x in resumen)]
@@ -518,7 +518,9 @@ with diaria_tab:
                     if tareas_p:
                         filas_dia = leer_cuadrante(ruta_cuadrante, dia.year)
                         fuera = {a.empleado for a in almacen.ausencias() if a.desde <= dia <= a.hasta}
-                        pasaje.asignar(tareas_p, pasaje.agentes_del_dia(filas_dia, dia, conf, "Pasaje", fuera))
+                        for categoria in dict.fromkeys(t.categoria for t in tareas_p):
+                            pasaje.asignar([t for t in tareas_p if t.categoria == categoria],
+                                           pasaje.agentes_del_dia(filas_dia, dia, conf, categoria, fuera))
                         pasaje.anadir_hoja(salida, tareas_p,
                                            pasaje.agentes_del_dia(filas_dia, dia, conf, "Responsable pasaje", fuera))
                 grupos = [e for e in parrilla.reparto.equipos if e.seccion == "GRUPOS"]
