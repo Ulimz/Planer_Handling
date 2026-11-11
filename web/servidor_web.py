@@ -231,13 +231,20 @@ def pagina_personal(u, archivo_de, colores: dict[str, str]) -> None:
                                placeholder="Cualquiera")
     contratos = c[3].multiselect("Contrato", valores("contrato"), placeholder="Todas")
     rotaciones = c[4].multiselect("Rotación", valores("rotacion"), placeholder="Todas")
-    c1, c2 = st.columns([1, 1])
+    c1, c2, c3 = st.columns([1, 1, 1])
     texto = c1.text_input("Código", placeholder="P00")
+    orden = c3.selectbox("Ordenar por", ["Base", "Función", "Contrato", "Rotación", "Código"])
     dia = c2.date_input("Cómo está el día", None, format="DD/MM/YYYY",
                         help="Mira si cada uno trabaja o libra ese día: primero en el cuadrante guardado, y si no "
                              "lo hay, por su rotación.")
     elegidas = filtrar(personas, Filtro(bases or None, funciones or None, capacit or None, contratos or None,
                                         rotaciones or None, texto), base_de)
+    claves = {"Base": lambda p: (base_de(p), p.funcion, p.codigo),
+              "Función": lambda p: (p.funcion, p.contrato or "~", p.codigo),
+              "Contrato": lambda p: (p.contrato or "~", p.funcion, p.codigo),
+              "Rotación": lambda p: (p.rotacion or "~", p.ancla or "~", p.funcion, p.codigo),
+              "Código": lambda p: (p.codigo,)}
+    elegidas.sort(key=claves[orden])
     archivos = {}
     filas = []
     for p in elegidas:

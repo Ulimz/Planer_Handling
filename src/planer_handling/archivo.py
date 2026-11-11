@@ -137,12 +137,44 @@ def filas_desde_plan(cm: CuadranteMes, colores: dict[str, str]) -> list[FilaCuad
     return list(filas.values())
 
 
-def tabla(filas: list[FilaCuadrante], dias: list[date], colores: dict[str, str]) -> list[dict]:
-    """Una fila por persona y una columna por día, para verlo y editarlo en pantalla."""
+def rotacion_de(fila: FilaCuadrante, dias: list[date]) -> str:
+    """"6x3 · 4": su rotación y en qué día del ciclo está el primer día del mes (quienes tienen el mismo
+    número trabajan y libran los mismos días). "irregular" si no sigue ninguna."""
+    from .anual import aprender_rotacion
+    rot = aprender_rotacion(fila, dias)
+    if not rot.ciclo():
+        return rot.patron
+    return f"{rot.patron} · {(dias[0] - rot.ancla).days % sum(rot.ciclo()) + 1}"
+
+
+ORDENES = {"cuadrante": "Como está en el cuadrante", "funcion": "Función", "contrato": "Contrato",
+           "rotacion": "Rotación"}
+
+
+def tabla(filas: list[FilaCuadrante], dias: list[date], colores: dict[str, str],
+          contratos: dict[str, str] | None = None, orden: str = "cuadrante") -> list[dict]:
+    """Una fila por persona y una columna por día, para verlo y editarlo en pantalla. Con `contratos`
+    (código -> contrato) lleva además las columnas Contrato y Rotación (solo para ver y ordenar)."""
     motivos = {c: m for m, c in colores.items()}
-    return [{"Código": f.nombre, "Función": f.funcion,
-             **{f"{d.day:02d}": texto_celda(f.jornadas.get(d), f.marcas_vacias.get(d, ""), motivos) for d in dias}}
-            for f in filas]
+    registros = []
+    for f in filas:
+        r = {"Código": f.nombre, "Función": f.funcion}
+        if contratos is not None:
+            r["Contrato"] = contratos.get(f.nombre, "")
+            r["Rotación"] = rotacion_de(f, dias)
+        r.update({f"{d.day:02d}": texto_celda(f.jornadas.get(d), f.marcas_vacias.get(d, ""), motivos) for d in dias})
+        registros.append(r)
+    claves = {"funcion": ("Función", "Contrato"), "contrato": ("Contrato", "Función"),
+              "rotacion": ("Rotación", "Función")}.get(orden)
+    if claves:
+        registros.sort(key=lambda r: tuple(_orden_natural(r.get(c, "")) for c in claves) + (r["Código"],))
+    return registros
+
+
+def _orden_natural(texto: str):
+    """"6x3 · 10" después de "6x3 · 9"; lo vacío al final."""
+    partes = re.split(r"(\d+)", str(texto or "~"))
+    return tuple(int(x) if x.isdigit() else x for x in partes)
 
 
 def desde_tabla(registros: list[dict], dias: list[date], colores: dict[str, str],
