@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from .configuracion import Configuracion
 from .equipos import Reparto
+from .anonimizar import es_codigo
 from .importar.cuadrante import FilaCuadrante
 from .importar.habilitaciones import Ficha, aplicar, clave_persona
 from .importar.vuelos import clave
@@ -34,6 +35,9 @@ def empleados_desde_cuadrante(filas: list[FilaCuadrante], conf: Configuracion,
     su función."""
     funciones = conf.datos.get("funciones", {})
     empleados, incidencias, desconocidas = [], [], set()
+    # Con códigos de empleado (P0001, EMP001…) únicos, el código es el identificador en la parrilla.
+    nombres = [clave(f.nombre).replace(" ", "") for f in filas]
+    por_codigo = len(set(nombres)) == len(nombres) and all(es_codigo(n) for n in nombres)
     for n, fila in enumerate(filas, 1):
         regla = funciones.get(fila.funcion)
         if regla is None:
@@ -44,7 +48,7 @@ def empleados_desde_cuadrante(filas: list[FilaCuadrante], conf: Configuracion,
             regla = {"categoria": "Operario", "habilitaciones": ["Operario"]}
         habilitaciones = aplicar([Habilitacion(h) for h in regla["habilitaciones"]],
                                  (fichas or {}).get(clave_persona(fila.nombre)))
-        e = Empleado(id=f"C{n:03d}", categoria=regla["categoria"], contrato=fila.funcion,
+        e = Empleado(id=nombres[n - 1] if por_codigo else f"C{n:03d}", categoria=regla["categoria"], contrato=fila.funcion,
                      habilitaciones=habilitaciones, nombre=fila.nombre)
         empleados.append(e)
     return empleados, incidencias
