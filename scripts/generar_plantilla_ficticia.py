@@ -100,7 +100,7 @@ def generar(escala):
                 "fecha_alta": alta,
             }
             if contrato == "Fijo tiempo completo":
-                fila["rotacion"] = "6x3-" + "ABC"[rotacion_6x3 % 3]
+                fila["rotacion"] = "6x3-" + "123"[rotacion_6x3 % 3]
                 rotacion_6x3 += 1
                 fila["horas_turno"] = 8
             elif contrato == "Tiempo parcial":

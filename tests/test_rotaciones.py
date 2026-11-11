@@ -5,14 +5,14 @@ from planer_handling.rotaciones import trabaja
 
 
 def test_6x3_trabajan_dos_de_tres_grupos_cada_dia(conf):
-    grupos = [Empleado(f"E{g}", "TL", "Fijo tiempo completo", f"6x3-{g}") for g in "ABC"]
+    grupos = [Empleado(f"E{g}", "TL", "Fijo tiempo completo", f"6x3-{g}") for g in "123"]
     for d in range(18):
         dia = conf.inicio_ciclos + timedelta(days=d)
         assert sum(trabaja(e, dia, conf) for e in grupos) == 2
 
 
 def test_6x3_seis_dias_seguidos_y_tres_libres(conf):
-    e = Empleado("E1", "TL", "Fijo tiempo completo", "6x3-A")
+    e = Empleado("E1", "TL", "Fijo tiempo completo", "6x3-1")
     patron = [trabaja(e, conf.inicio_ciclos + timedelta(days=d), conf) for d in range(9)]
     assert patron == [True] * 6 + [False] * 3
 
