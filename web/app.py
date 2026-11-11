@@ -22,7 +22,7 @@ import pagina_empresa
 
 from planer_handling.anonimizar import Codigos
 from planer_handling.anual import rotaciones_recientes
-from planer_handling.archivo import (TIPOS, Archivo, desde_tabla, desde_tabla_vuelos, exportar_cuadrante,
+from planer_handling.archivo import (ORDENES, TIPOS, Archivo, desde_tabla, desde_tabla_vuelos, exportar_cuadrante,
                                      filas_desde_plan, tabla, tabla_vuelos)
 from planer_handling.anual_excel import exportar_anio
 from planer_handling import empresas
@@ -249,10 +249,17 @@ def editor_cuadrante(anio: int, mes: int, tipo: str) -> None:
     contra los vuelos del mes (si están guardados) y se guarda con un botón."""
     filas = arch.cuadrante(anio, mes, tipo)
     dias = dias_del_mes(anio, mes)
-    base = tabla(filas, dias, colores)
-    clave = f"editor_{demo}_{tipo}_{anio}_{mes}"
+    orden = st.columns([1, 2])[0].selectbox("Ordenar por", list(ORDENES), format_func=ORDENES.get, key=f"orden_{demo}_{tipo}_{anio}_{mes}",
+                         help="La rotación lleva el día del ciclo en que está cada uno el día 1: quienes tienen el "
+                              "mismo número trabajan y libran los mismos días.")
+    base = tabla(filas, dias, colores, arch.contratos() or {}, orden)
+    clave = f"editor_{demo}_{tipo}_{anio}_{mes}_{orden}"
     configuracion_columnas = {"Código": st.column_config.TextColumn(pinned=True, width="small"),
-                              "Función": st.column_config.TextColumn(width=80)}
+                              "Función": st.column_config.TextColumn(width=80),
+                              "Contrato": st.column_config.TextColumn(width=70, disabled=True,
+                                                                      help="Del archivo de contratos (pestaña Datos)"),
+                              "Rotación": st.column_config.TextColumn(width=80, disabled=True,
+                                                                      help="Aprendida de este mismo cuadrante")}
     for d in dias:
         configuracion_columnas[f"{d.day:02d}"] = st.column_config.TextColumn(f"{d.day:02d} {'LMXJVSD'[d.weekday()]}",
                                                                              width="small")
@@ -260,6 +267,9 @@ def editor_cuadrante(anio: int, mes: int, tipo: str) -> None:
                              column_config=configuracion_columnas, width="stretch")
     errores: list[str] = []
     nuevas = desde_tabla(editado, dias, colores, errores)
+    # Ordenar es solo para ver: se guarda en el orden del cuadrante (las filas nuevas, al final).
+    posicion = {f.nombre: i for i, f in enumerate(filas)}
+    nuevas.sort(key=lambda f: posicion.get(f.nombre, len(posicion)))
     cambiado = editado != base
     if errores:
         st.error("No se entienden estas celdas (se toman como libre hasta que las corrijas): " + "; ".join(errores[:12])
