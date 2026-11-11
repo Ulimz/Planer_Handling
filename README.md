@@ -97,3 +97,10 @@ En Windows, doble clic en `arrancar_web.bat`.
 - **Demo**: el interruptor "Demo con una empresa ficticia" de la barra lateral carga una empresa inventada (`ejemplos/demo/`, se rehace con `python ejemplos/generar_demo.py`): 260 personas (rampa y pasaje), contratos, cuadrante de octubre, vuelos de noviembre con la forma de una operación vacacional desde Reino Unido, y el noviembre que sale del programa y uno "a mano" para compararlos, y las solicitudes de vacaciones de 2027. Usa `config/demo.yaml`, que hereda de `base.yaml` y activa pasaje. Las ausencias de la demo se guardan aparte, en `datos/registro_demo/`.
 
 En Linux o Mac: `pip install -e .[web]` y después `streamlit run web/app.py`.
+
+## En un servidor central, con cuentas y permisos por base
+
+Con `AEROS_SERVIDOR=1` la misma web pide usuario y contraseña, y cada uno ve solo sus bases y
+herramientas: el administrador de AEROS da de alta empresas y bases, la central de cada empresa da
+los permisos y hay una pestaña Personal para filtrar por base, función, capacitación, contrato y
+rotación. Cómo montarlo y la base piloto con datos ficticios: [docs/servidor.md](docs/servidor.md).

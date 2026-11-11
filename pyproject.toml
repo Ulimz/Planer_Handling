@@ -11,12 +11,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "sqlalchemy>=2.0"]
 web = ["streamlit>=1.35"]
+servidor = ["streamlit>=1.35", "sqlalchemy>=2.0", "psycopg[binary]>=3.1"]
 
 [project.scripts]
 planer = "planer_handling.cli:main"
 planer-mes = "planer_handling.cli_mes:main"
+aeros-servidor = "planer_handling.servidor.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]
