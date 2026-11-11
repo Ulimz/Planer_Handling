@@ -71,3 +71,23 @@ def test_cuadrante_ida_y_vuelta(tmp_path):
     assert arch.meses() == [(2026, 1, {"programa", "vuelos"})]
     vuelta = desde_tabla_vuelos(tabla_vuelos([v]), dias[0])[0]
     assert (vuelta.sta, vuelta.std, vuelta.vuelo_out) == (1450, 1500, "XX2")
+
+
+def test_tabla_con_contrato_y_rotacion_y_ordenada():
+    from datetime import date as _date
+    from planer_handling.archivo import tabla
+    from planer_handling.importar.cuadrante import FilaCuadrante as _F, Jornada as _J
+    from planer_handling.mensual import dias_del_mes as _dias
+    dias = _dias(2026, 11)
+    filas = []
+    for codigo, funcion, desfase in [("P0001", "TL", 3), ("P0002", "PCP", 0), ("P0003", "PCP", 3)]:
+        f = _F(funcion, codigo, 2)
+        f.jornadas = {d: _J([(360, 840)]) for i, d in enumerate(dias) if (i + desfase) % 9 < 6}
+        filas.append(f)
+    contratos = {"P0001": "TC", "P0002": "TP", "P0003": "FD"}
+    t = tabla(filas, dias, {}, contratos, "rotacion")
+    assert [r["Código"] for r in t] == ["P0002", "P0003", "P0001"]     # 6x3 · 1 primero, luego 6x3 · 4
+    assert t[0]["Rotación"] == "6x3 · 1" and t[2]["Rotación"] == "6x3 · 4"
+    assert [r["Código"] for r in tabla(filas, dias, {}, contratos, "contrato")] == ["P0003", "P0001", "P0002"]
+    assert "Contrato" not in tabla(filas, dias, {})[0]                  # sin contratos, como antes
+    assert _date(2026, 11, 1) in filas[1].jornadas
