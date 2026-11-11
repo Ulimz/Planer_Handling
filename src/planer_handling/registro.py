@@ -116,5 +116,26 @@ class Almacen:
     def borrar(self, id_registro: str) -> None:
         self._escribir([r for r in self.registros() if r.id != id_registro])
 
+    def anonimizar(self, codigo) -> int:
+        """Cambia los nombres que queden en la plantilla y en las ausencias por su código
+        (`codigo`: nombre -> código, ver anonimizar.Codigos). Devuelve cuántos ha cambiado."""
+        cambiados = 0
+        plantilla = self.plantilla()
+        nueva = sorted({(codigo(e), f) for e, f in plantilla})
+        if nueva != sorted(plantilla):
+            cambiados += sum(1 for e, _ in plantilla if codigo(e) != e)
+            with self.ruta_plantilla.open("w", newline="", encoding="utf-8") as fh:
+                escritor = csv.writer(fh)
+                escritor.writerow(["empleado", "funcion"])
+                escritor.writerows(nueva)
+        registros = self.registros()
+        for r in registros:
+            if codigo(r.empleado) != r.empleado:
+                r.empleado = codigo(r.empleado)
+                cambiados += 1
+        if cambiados and registros:
+            self._escribir(registros)
+        return cambiados
+
     def ausencias(self) -> list[Ausencia]:
         return [r.como_ausencia() for r in self.registros()]
