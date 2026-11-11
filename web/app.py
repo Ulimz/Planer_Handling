@@ -293,9 +293,9 @@ with datos_tab:
                                     key="vuelos_d")
         contratos_d = st.file_uploader("Contratos de la plantilla (Empleado, Contrato). Sirve para todos los meses",
                                        type=["xlsx", "csv"], key="contratos_d")
-        formacion_d = st.file_uploader("Formación de cada persona (Empleado, Contrato, PCP, cinta, carreteo, PBT, "
-                                       "TBL, JAR). Nadie va a la cinta, al carreteo o al pushback sin ella",
-                                       type=["xlsx"], key="formacion_d")
+        formacion_d = st.file_uploader("Formación de cada persona: el Excel EVE-FD o el PARRITRON (hoja AJUSTES, "
+                                       "capacitaciones PCP, cinta, carreteo, PBT, TBL, JAR). Nadie va a la cinta, al "
+                                       "carreteo o al pushback sin ella", type=["xlsx", "xlsm"], key="formacion_d")
         if st.button("Guardar", type="primary", disabled=not (real_d or vuelos_d or contratos_d or formacion_d)):
             hecho = []
             try:

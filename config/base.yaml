@@ -139,6 +139,8 @@ habilitaciones_por_persona:
     PCP:                {habilitaciones: [Carretero, PB/TOW, Jardinero], solo_quita: true}
     FORMACION CINTA:    {habilitaciones: [Cintero]}
     FORMACION CARRETEO: {habilitaciones: [Carretero]}
+    CINTA:              {habilitaciones: [Cintero]}       # así lo llama PARRITRON (hoja AJUSTES, CAPACITACIONES)
+    CARRETEO:           {habilitaciones: [Carretero]}
     PBT:                {habilitaciones: [PB/TOW]}
     TBL:                {habilitaciones: [PB/TOW]}
     JAR:                {habilitaciones: [Jardinero]}
