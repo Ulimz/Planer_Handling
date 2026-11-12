@@ -74,9 +74,11 @@ class Perfil:
     horario_fijo: bool = False          # concreción horaria: entra siempre a su hora habitual
     jornada_minima: int = 0             # minutos por debajo de los que no se recorta su jornada
     horas_mes: list[float] = field(default_factory=list)  # [mínimo, máximo] del convenio (aviso)
+    ciclo_dias: tuple[int, int] | None = None   # (trabajo, libre) si su rotación viene de la config
+    minutos_objetivo: int = 0           # tope de minutos del mes (horas del año que le quedan); 0 = sin tope
 
     def ciclo(self) -> tuple[int, int] | None:
-        return ROTACIONES.get(self.patron)
+        return self.ciclo_dias or ROTACIONES.get(self.patron)
 
     def posicion(self, dia: date, referencia: date) -> int | None:
         ciclo = self.ciclo()
@@ -343,7 +345,8 @@ def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[
                    coste_tl_pb_operario: int = 0,
                    costes_cambio: dict[str, tuple[int | None, int | None]] | None = None,
                    puede_hacer_de: dict[str, list[str]] | None = None,
-                   coste_falta: dict[str, int] | None = None) -> list[Jornada]:
+                   coste_falta: dict[str, int] | None = None,
+                   minutos_usados: dict[str, int] | None = None) -> list[Jornada]:
     """Horarios del día. Con `actual` (el horario ya publicado de ese día) reorganiza: mantiene a
     cada uno en su horario salvo que haga falta moverlo para cubrir a los ausentes, y solo llama
     a alguien que libra si no hay otra forma.
@@ -395,6 +398,9 @@ def planificar_dia(dia: date, demanda_dia: dict[str, list[int]], perfiles: list[
             continue
         if trabaja is None and actual is None and dias_usados.get(e.id, 0) >= p.dias_referencia:
             continue
+        if (actual is None and p.minutos_objetivo
+                and (minutos_usados or {}).get(e.id, 0) + min(p.duraciones or [p.duracion]) > p.minutos_objetivo):
+            continue                       # ya tiene las horas que como mucho le tocan este mes
         coste_mover, coste_llamar = COSTE_CAMBIO, COSTE_IRREGULAR if p.patron == "irregular" else COSTE_LLAMAR_LIBRE
         if actual is not None and costes_cambio and e.id in costes_cambio:
             coste_mover, coste_llamar = costes_cambio[e.id]
@@ -581,15 +587,19 @@ def planificar_mes(vuelos_por_dia: dict[date, list[Vuelo]], perfiles: list[Perfi
     """`progreso(dia, hechos, total)`, si se pasa, se llama al terminar cada día (para la web)."""
     fin_anterior: dict[str, int] = {}
     dias_usados: Counter = Counter()
+    minutos_usados: Counter = Counter()
     dias = []
     for dia in sorted(vuelos_por_dia):
         demanda_dia = demanda_del_dia(vuelos_por_dia[dia], conf)
         ausentes = ausentes_del_dia(ausencias or [], perfiles, dia)
         jornadas = planificar_dia(dia, demanda_dia, perfiles, referencia, fin_anterior, dias_usados,
                                   segundos_por_dia, ausentes, coste_tl_pb_operario=coste_tl_pb_operario(conf),
-                                  puede_hacer_de=sustituciones(conf), coste_falta=costes_falta(conf))
+                                  puede_hacer_de=sustituciones(conf), coste_falta=costes_falta(conf),
+                                  minutos_usados=minutos_usados)
         fin_anterior = {j.perfil.empleado.id: j.fin for j in jornadas}
         dias_usados.update(j.perfil.empleado.id for j in jornadas)
+        for j in jornadas:
+            minutos_usados[j.perfil.empleado.id] += sum(f - i for i, f in j.tramos)
         dias.append(DiaPlanificado(dia, len(vuelos_por_dia[dia]), demanda_dia, cobertura(jornadas, demanda_dia), jornadas,
                                    ausentes))
         if progreso:

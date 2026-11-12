@@ -12,12 +12,20 @@ empresa:
 
 zona_horaria: Europe/Madrid
 
-# Fecha en la que empieza el ciclo de cada patrón (día 1 de la rotación A / 1).
-inicio_ciclos: 2026-01-05
+# Fecha en la que empieza el ciclo de cada patrón (día 1 de la rotación 1). Comprobado con los
+# cuadrantes reales de enero a noviembre de 2026: la ROT1 de Azul empieza sus 3 mañanas el 28-12-2025.
+inicio_ciclos: 2025-12-28
 
+# Cada rotación: días de trabajo y de libranza, y desfase de cada grupo (días) sobre inicio_ciclos.
+#   jornadas_h: horas de la jornada de quien la sigue (si no, las de su contrato).
+#   funciones: si la rotación es solo de unas funciones (si no, es de todas las que no tienen otra).
+#   fases: turno de cada día de trabajo (M/T). En Azul (Ulises, 11-11-2026): 6x3 = 3 mañanas, 3 tardes
+#          y 3 libres; 4x4 de mandos = 2 mañanas y 2 tardes de 10 h y 4 libres. Parciales, discontinuos
+#          y eventuales también van en la 6x3 (ROT1-3), repartidos con el resto.
 rotaciones:
-  "6x3":  {trabajo: 6, libre: 3, grupos: {A: 0, B: 3, C: 6}}
-  "4x4":  {trabajo: 4, libre: 4, grupos: {"1": 0, "2": 2, "3": 4, "4": 6}}
+  "6x3":  {trabajo: 6, libre: 3, fases: MMMTTT, grupos: {"1": 0, "2": 6, "3": 3}}
+  "4x4":  {trabajo: 4, libre: 4, fases: MMTT, jornadas_h: [10], funciones: [RCO, ARCO],
+           grupos: {"1": 0, "2": 2, "3": 4, "4": 6}}
   "5x2":  {trabajo: 5, libre: 2, grupos: {}}   # parciales, discontinuos y eventuales
 
 turnos:
@@ -110,11 +118,13 @@ solape_minimo_equipo: 120
 contratos:
   TC:  {nombre: Tiempo completo, jornadas_h: [8]}
   TCC: {nombre: Tiempo completo con concreción horaria, horario_fijo: true}
-  TP:  {nombre: Tiempo parcial, jornadas_h: [2, 3, 4, 5, 6, 7, 8], horas_mes: [71, 128]}
-  FD:  {nombre: Fijo discontinuo, jornadas_h: [2, 3, 4, 5, 6, 7, 8], horas_mes: [47]}
+  TP:  {nombre: Tiempo parcial, jornadas_h: [2, 3, 4, 5, 6, 7, 8], horas_mes: [71, 128], horas_anuales: [856, 1541]}
+  FD:  {nombre: Fijo discontinuo, jornadas_h: [2, 3, 4, 5, 6, 7, 8], horas_mes: [47], horas_anuales: [565, 1541]}
   FDC: {nombre: Fijo discontinuo con concreción horaria, horario_fijo: true}
   EVE: {nombre: Eventual, jornadas_h: [2, 3, 4, 5, 6, 7, 8]}
   INT: {nombre: Interino, jornadas_h: [2, 3, 4, 5, 6, 7, 8]}
+# horas_anuales: [mínimo, máximo] al año; el máximo es lo más que el programa le da (Ulises: el parcial
+#   puede llegar al máximo del convenio). Sin horas_anuales: las de jornada completa.
 # horas_mes: [mínimo, máximo] de horas al mes. Solo es un aviso en la hoja "Horas" del Excel: el
 # convenio cuenta en promedio anual, así que un mes por debajo no es por sí solo un incumplimiento.
 # Convenio de Azul Handling, con 1.712 h/año de jornada completa (art. 31):
@@ -128,6 +138,10 @@ contratos:
 # horas complementarias.
 contrato_parcial_por_defecto: TP
 
+# Horas al año de una jornada completa (convenio de Azul, art. 31). En la ficha de plantilla, quien
+# tiene 0 horas al año hace estas; los parciales y discontinuos llevan las suyas.
+horas_anuales_completa: 1712
+
 # Formación de cada persona (archivo opcional con una fila por persona: EMPLEADO, CONTRATO y una
 # columna por habilitación). Quien tiene 1 en una columna gana esas habilitaciones; quien tiene 0,
 # NO APTO o RETIRADA las pierde aunque su función se las dé. Vacío o N/A: lo que dé su función.
@@ -139,6 +153,8 @@ habilitaciones_por_persona:
     PCP:                {habilitaciones: [Carretero, PB/TOW, Jardinero], solo_quita: true}
     FORMACION CINTA:    {habilitaciones: [Cintero]}
     FORMACION CARRETEO: {habilitaciones: [Carretero]}
+    CINTA:              {habilitaciones: [Cintero]}       # así lo llama PARRITRON (hoja AJUSTES, CAPACITACIONES)
+    CARRETEO:           {habilitaciones: [Carretero]}
     PBT:                {habilitaciones: [PB/TOW]}
     TBL:                {habilitaciones: [PB/TOW]}
     JAR:                {habilitaciones: [Jardinero]}

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import copy
 import os
+from collections import Counter
 import tempfile
 from datetime import date
 from pathlib import Path
@@ -38,6 +39,7 @@ from planer_handling.mensual import INICIO_MAS_TEMPRANO, aprender_perfiles, dias
 from planer_handling.mensual_excel import exportar_mes
 from planer_handling.modelos import hhmm as hhmm_
 from planer_handling import pasaje
+from planer_handling import plantilla as ficha_pl
 from planer_handling.parrilla_excel import exportar
 from planer_handling.registro import Almacen, motivos
 from planer_handling.resumen import resumir
@@ -382,9 +384,9 @@ if datos_tab is not None:
                                         key="vuelos_d")
             contratos_d = st.file_uploader("Contratos de la plantilla (Empleado, Contrato). Sirve para todos los meses",
                                            type=["xlsx", "csv"], key="contratos_d")
-            formacion_d = st.file_uploader("Formación de cada persona (Empleado, Contrato, PCP, cinta, carreteo, PBT, "
-                                           "TBL, JAR). Nadie va a la cinta, al carreteo o al pushback sin ella",
-                                           type=["xlsx"], key="formacion_d")
+            formacion_d = st.file_uploader("Formación de cada persona: el Excel EVE-FD o el PARRITRON (hoja AJUSTES, "
+                                           "capacitaciones PCP, cinta, carreteo, PBT, TBL, JAR). Nadie va a la cinta, al "
+                                           "carreteo o al pushback sin ella", type=["xlsx", "xlsm"], key="formacion_d")
             if st.button("Guardar", type="primary", disabled=not (real_d or vuelos_d or contratos_d or formacion_d)
                          or not edita("datos")):
                 hecho = []
@@ -419,6 +421,71 @@ if datos_tab is not None:
                     st.error(f"No se ha podido leer: {error}")
         if (aviso_d := st.session_state.pop("guardado_d", None)):
             st.success(aviso_d)
+
+        st.markdown("#### Ficha de plantilla")
+        st.write("Lo que el programa sabe de cada código para hacerle los horarios sin turnos de nadie: función, "
+                 "contrato, rotación y grupo, horas al año, hora a la que suele entrar y si hace partidos. Se aprende "
+                 "una vez de todos los cuadrantes reales guardados y después se corrige aquí a mano.")
+        ficha_g = ficha_pl.leer(arch.carpeta)
+        reales_g = sorted(meses_con("real"))
+        c1, c2 = st.columns([2, 3])
+        if c1.button("Aprender de todos los cuadrantes reales" if not ficha_g else "Volver a aprender (se pierden "
+                     "los cambios a mano)", disabled=not reales_g or not edita("datos"), key=f"aprender_{demo}"):
+            with st.spinner(f"Estudiando {len(reales_g)} meses…"):
+                ficha_n, resumen_n = ficha_pl.aprender([(arch.cuadrante(a, m), dias_del_mes(a, m)) for a, m in reales_g],
+                                                        conf, arch.contratos())
+                ficha_pl.guardar(arch.carpeta, ficha_n)
+                st.session_state.pop(f"ficha_{demo}", None)
+                st.session_state["aprendido_d"] = resumen_n
+                st.rerun()
+        if (resumen_d := st.session_state.pop("aprendido_d", None)):
+            c2.success(f"Aprendido de {resumen_d['meses']} meses: {resumen_d['personas']} personas. Encajan con su "
+                       f"grupo el {resumen_d['encaje_medio']:.0%} de los días. "
+                       + ", ".join(f"{k}: {v}" for k, v in resumen_d["grupos"].items()) + ".")
+        if ficha_g:
+            rotaciones_g = list(conf.datos.get("rotaciones", {}))
+            base_f = ficha_pl.tabla(ficha_g)
+            editada_f = st.data_editor(
+                base_f, key=f"ficha_{demo}", hide_index=True, num_rows="dynamic", width="stretch",
+                column_config={
+                    "Código": st.column_config.TextColumn(pinned=True, width="small"),
+                    "Función": st.column_config.SelectboxColumn(options=list(conf.datos.get("funciones", {}))),
+                    "Contrato": st.column_config.SelectboxColumn(options=[""] + list(conf.datos.get("contratos", {}))),
+                    "Rotación": st.column_config.SelectboxColumn(options=[""] + rotaciones_g,
+                                                                 help="Vacío = sin rotación (se le llama según vuelos)"),
+                    "Grupo": st.column_config.TextColumn(help="El grupo de su rotación: " + "; ".join(
+                        f"{r}: {', '.join(map(str, (v.get('grupos') or {})))}" for r, v in conf.datos["rotaciones"].items()
+                        if v.get("grupos"))),
+                    "Turnos del ciclo": st.column_config.TextColumn(
+                        help="Vacío = los de su rotación (" + ", ".join(f"{r} {v['fases']}" for r, v in
+                                                                        conf.datos["rotaciones"].items() if v.get("fases"))
+                             + "). Solo si esta persona los hace distintos."),
+                    "Horas al año (contrato)": st.column_config.NumberColumn(
+                        min_value=0, step=10, help="Las horas de su contrato al año (se aprenden de lo que hace de "
+                        f"verdad). 0 = jornada completa ({ficha_pl.horas_completa(conf):g} h). El programa no pasa del "
+                        "máximo del convenio para su contrato."),
+                    "Entrada habitual": st.column_config.TextColumn(help="Mañana/tarde, por ejemplo 04:45/18:00. El "
+                                                                    "programa la mueve si los vuelos lo piden."),
+                    "Entrada fija": st.column_config.TextColumn(help="Concreción horaria: entra siempre a esa hora."),
+                    "Partido": st.column_config.TextColumn(help="Si hace partidos, horas de cada tramo: 3+3."),
+                    "Activo": st.column_config.CheckboxColumn(help="Quítalo a quien ya no está."),
+                })
+            personas_f, errores_f = ficha_pl.desde_tabla(editada_f)
+            avisos_f = errores_f + ficha_pl.revisar(personas_f, conf)
+            activos_f = [p for p in personas_f if p.activo]
+            st.caption(f"{len(activos_f)} personas activas: " + ", ".join(
+                f"{k} {v}" for k, v in Counter(f"{p.rotacion} {p.grupo}".strip() or "sin rotación"
+                                                for p in activos_f).most_common()) + ".")
+            for aviso in avisos_f[:10]:
+                st.warning(aviso)
+            if len(avisos_f) > 10:
+                st.caption(f"… y {len(avisos_f) - 10} avisos más.")
+            if st.button("Guardar la ficha", type="primary", disabled=editada_f == base_f or bool(errores_f) or not edita("datos"),
+                         key=f"guardar_ficha_{demo}"):
+                ficha_pl.guardar(arch.carpeta, personas_f)
+                st.session_state.pop(f"ficha_{demo}", None)
+                st.toast("Ficha guardada.")
+                st.rerun()
 
         if guardados:
             st.markdown("#### Ver y corregir")
@@ -744,24 +811,39 @@ if ausencias_tab is not None:
 if mensual_tab is not None:
     with mensual_tab:
         st.subheader("Cuadrante del mes a partir de los vuelos")
-        st.write("El programa continúa la rotación de cada persona desde el cuadrante real de un mes anterior y le "
-                 "pone el horario que mejor cubre los vuelos de cada día. Después lo puedes corregir aquí mismo.")
+        st.write("El programa hace el horario de todos con la ficha de plantilla (rotación, contrato y horas al año "
+                 "de cada código) y los vuelos de cada día. Después lo puedes corregir aquí mismo.")
         hoy = date.today()
         siguiente = date(hoy.year + hoy.month // 12, hoy.month % 12 + 1, 1)
         anio, mes = elegir_mes("A planificar", siguiente, "plan", NOVIEMBRE_DEMO)
         vuelos_m = arch.vuelos(anio, mes)
+        ficha_m = [p for p in (ficha_pl.leer(arch.carpeta) or []) if p.activo]
         reales_m = sorted((x for x in meses_con("real") if x < (anio, mes)), reverse=True)
         if not vuelos_m:
             st.warning(f"Faltan los vuelos de {nombre_mes(anio, mes)}: súbelos en la pestaña Datos.")
-        if not reales_m:
-            st.warning("Falta un cuadrante real de un mes anterior: súbelo en la pestaña Datos.")
-        referencia_m = st.selectbox("Cuadrante de referencia (normalmente el real del mes anterior)", reales_m,
-                                    format_func=lambda x: f"Real de {nombre_mes(*x)}", key=f"ref_m_{demo}_{anio}_{mes}")
+        modos = (["ficha"] if ficha_m else []) + (["referencia"] if reales_m else [])
+        if not modos:
+            st.warning("Falta la ficha de plantilla: créala en la pestaña Datos (se aprende de los cuadrantes guardados).")
+        modo_m = st.radio("Con qué", modos, horizontal=True, key=f"modo_m_{demo}_{bool(ficha_m)}",
+                          format_func=lambda m: {"ficha": f"Ficha de plantilla ({len(ficha_m)} personas)",
+                                                 "referencia": "Copiando un mes anterior (como antes)"}[m])
+        referencia_m = None
+        if modo_m == "referencia":
+            referencia_m = st.selectbox("Cuadrante de referencia (normalmente el real del mes anterior)", reales_m,
+                                        format_func=lambda x: f"Real de {nombre_mes(*x)}",
+                                        key=f"ref_m_{demo}_{anio}_{mes}")
         contratos_m = arch.contratos()
-        st.caption((f"Contratos guardados de {len(contratos_m)} personas: a los parciales se les ajustan las horas a los "
-                    "vuelos y a los TC se les dan sus 8 horas." if contratos_m else
-                    "Sin contratos guardados (pestaña Datos), todos se planifican con la jornada del mes de referencia.")
-                   + " Las ausencias apuntadas en Plantilla y ausencias se tienen en cuenta solas.")
+        if modo_m == "ficha":
+            hechas_m, meses_dato_m = ficha_pl.horas_hechas(arch, anio, mes)
+            st.caption("Cada uno trabaja los días de su rotación, con los turnos de su ciclo; la hora y las horas del "
+                       "día salen de los vuelos. Los parciales no pasan de sus horas al año: se descuentan las hechas en "
+                       f"{len(meses_dato_m)} meses guardados de {anio} y lo que queda se reparte en lo que falta de año."
+                       " Las ausencias apuntadas en Plantilla y ausencias se tienen en cuenta solas.")
+        else:
+            st.caption((f"Contratos guardados de {len(contratos_m)} personas: a los parciales se les ajustan las horas a "
+                        "los vuelos y a los TC se les dan sus 8 horas." if contratos_m else
+                        "Sin contratos guardados (pestaña Datos), todos se planifican con la jornada del mes de "
+                        "referencia.") + " Las ausencias apuntadas en Plantilla y ausencias se tienen en cuenta solas.")
         ausencias_archivo = st.file_uploader("Más ausencias de este mes (opcional): Empleado, Desde, Hasta, Motivo",
                                              type=["xlsx", "csv"], key="aus")
         segundos = st.slider("Tiempo de cálculo por día (segundos)", 10, 60, 30, key="seg",
@@ -771,13 +853,19 @@ if mensual_tab is not None:
             st.caption("Ya hay un cuadrante del programa guardado para este mes: si lo generas otra vez, se sustituye "
                        "(con tus correcciones).")
         if st.button("Generar cuadrante", type="primary",
-                     disabled=not (vuelos_m and referencia_m) or not edita("cuadrante")):
+                     disabled=not (vuelos_m and modo_m) or not edita("cuadrante")):
             with tempfile.TemporaryDirectory() as tmp:
                 tmp = Path(tmp)
                 try:
-                    with st.status("Aprendiendo del cuadrante de referencia…") as estado:
-                        dias_ref = dias_del_mes(*referencia_m)
-                        perfiles_m = aprender_perfiles(arch.cuadrante(*referencia_m), dias_ref, conf, contratos_m)
+                    with st.status("Preparando a cada persona…") as estado:
+                        if modo_m == "ficha":
+                            dias_ref = dias_del_mes(anio, mes)
+                            perfiles_m, avisos_m = ficha_pl.perfiles(ficha_m, conf, anio, mes, arch.formacion(),
+                                                                     hechas_m, meses_dato_m)
+                        else:
+                            dias_ref = dias_del_mes(*referencia_m)
+                            perfiles_m = aprender_perfiles(arch.cuadrante(*referencia_m), dias_ref, conf,
+                                                           contratos_m)
                         ausencias = almacen.ausencias()
                         if ausencias_archivo:
                             ausencias += codigos.lista(leer_ausencias(guardar(ausencias_archivo, tmp)))
@@ -805,6 +893,14 @@ if mensual_tab is not None:
             if (excel := st.session_state.get("excel_mes")) and excel[:2] == (anio, mes):
                 st.download_button("Descargar tal como salió del programa, con las hojas de cobertura y horas",
                                    excel[3], excel[2])
+            if ficha_m:
+                with st.expander("Horas del año de cada persona"):
+                    previstas_m = ficha_pl.horas_por_codigo(arch.cuadrante(anio, mes, "programa"))
+                    st.dataframe(ficha_pl.cuenta_anual(ficha_m, arch, conf, anio, mes, previstas_m), hide_index=True,
+                                 width="stretch")
+                    st.caption("Hechas antes: lo de los meses guardados de este año (el real si está; si no, el del "
+                               "programa). Horas al año: las de su contrato (ficha). Máximo: lo más que permite el "
+                               "convenio para su contrato.")
 
 if diaria_tab is not None:
     with diaria_tab:

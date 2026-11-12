@@ -101,9 +101,9 @@ def personas(rnd: random.Random) -> list[dict]:
 def jornada(p: dict, dia: date) -> list[tuple[int, int]] | None:
     """Rotación 6x3 (MMMTTT + 3 libres) o 4x4 para mandos (MMTT + 4 libres). Continúa entre meses."""
     if p.get("mando"):
-        pos = ((dia - date(2026, 1, 5)).days + 2 * p["grupo"]) % 8
+        pos = ((dia - date(2025, 12, 28)).days + 2 * p["grupo"]) % 8
         return None if pos >= 4 else (p["manana"] if pos < 2 else p["tarde"])
-    pos = ((dia - date(2026, 1, 5)).days + 3 * p["grupo"]) % 9
+    pos = ((dia - date(2025, 12, 28)).days + 3 * p["grupo"]) % 9
     return None if pos >= 6 else (p["manana"] if pos < 3 else p["tarde"])
 
 
